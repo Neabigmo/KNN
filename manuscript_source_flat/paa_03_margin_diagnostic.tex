@@ -1,0 +1,83 @@
+\section{Vote-Margin Characterization}
+\label{sec:margin-diagnostic}
+
+The argument is based on a simple observation: one fixed-location prototype relabeling can remove one vote from the current winning side and add one vote to a competing side.  The consequences are slightly different in the binary and multiclass settings, so we state them separately.
+
+\begin{lemma}
+\label{lem:two-vote-bound}
+For deterministic kNN under fixed-location one-label replacement, a single relabeling changes the binary signed margin by at most two and changes the multiclass winner-versus-competitor vote gap by at most two.
+\end{lemma}
+
+\begin{proof}
+If the replaced prototype is not among the current top-$k$ neighbors of a query, the local vote is unchanged.  If it is among the current top-$k$ neighbors, then exactly one local vote is removed from its original label and exactly one local vote is added to its replacement label.  In the binary encoding this changes the signed margin by $\pm 2$.  In the multiclass setting it can decrease the current winner's vote count by one and increase one competitor's count by one, so the winner-versus-competitor gap changes by at most two.
+\end{proof}
+
+\subsection{Binary signed margin}
+
+For binary labels encoded as $\{-1,+1\}$, let $N_k(S,x)$ be the ordered top-$k$ neighbor occurrences.  Define
+\[
+    M_k(S,x)=\sum_{j\in N_k(S,x)} y_j .
+\]
+The sign of $M_k(S,x)$ determines the prediction when $k$ is odd.  A single label flip changes this signed margin by at most two, so the conservative binary audit band is
+\[
+    A_k^{\mathrm{bin}}(S,x)=\mathbf 1\{|M_k(S,x)|\le 2\}.
+\]
+For odd $k$, the margin is always odd, so this band collapses to the exact one-replacement condition $|M_k(S,x)|=1$.
+
+\begin{proposition}
+\label{prop:binary-odd-exact}
+For binary deterministic kNN with odd $k$ and fixed-location one-label replacement, a query is vulnerable if and only if $|M_k(S,x)|=1$.
+\end{proposition}
+
+\begin{proof}
+If $|M_k(S,x)|=1$, relabeling one supporting top-$k$ prototype from the winning class to the competing class changes the margin by $2$ and crosses the decision threshold.  If $|M_k(S,x)|\ge 3$, \Cref{lem:two-vote-bound} shows that no single relabeling can reverse the sign.  Since odd-$k$ margins cannot equal $0$ or $2$, the two statements are equivalent.
+\end{proof}
+
+For even $k$, deterministic tie-breaking must be included in the decision rule; the same small-margin band remains the conservative diagnostic used in the experiments.
+
+\subsection{Multiclass top-two gap}
+
+For multiclass labels, let
+\[
+    V_c(S,x)=\sum_{j\in N_k(S,x)}\mathbf 1\{y_j=c\}
+\]
+be the local vote count for class $c$.  Let $\hat c$ be the winning class after deterministic tie-breaking.  Define the top-two local vote gap
+\[
+    G_k(S,x)=V_{\hat c}(S,x)-\max_{c\ne \hat c}V_c(S,x).
+\]
+A one-label replacement can decrease $V_{\hat c}$ by one and increase a competitor's count by one.  Hence the multiclass audit flag is
+\[
+    A_k^{\mathrm{multi}}(S,x)=\mathbf 1\{G_k(S,x)\le 2\}.
+\]
+For binary labels, this reduces to the signed-margin band.  For multiclass problems, the gap is best interpreted as a risk band rather than a universal exact certificate.
+
+\begin{proposition}
+\label{prop:multiclass-band}
+If $G_k(S,x)>2$, no fixed-location one-label relabeling among the current top-$k$ neighbors can flip the prediction at $x$.  If $G_k(S,x)\le 2$, the query lies in the candidate PRV band; exact flip status additionally depends on the admissible replacement labels and the deterministic tie-breaking rule.
+\end{proposition}
+
+\begin{proof}
+The first statement follows directly from \Cref{lem:two-vote-bound}.  When $G_k(S,x)\le 2$, a relabeling can bring the winning class and a competitor to either a reversed order or a tie.  A final flip then depends on whether the relevant replacement label is admissible and, in the tie case, whether the deterministic tie rule favors the competitor.
+\end{proof}
+
+\subsection{Band rate and exposure}
+
+The audit reports several linked quantities rather than only a binary flag.  On an evaluation set $Q$, the margin-band rate is
+\[
+    \mathrm{BandRate}_k(S,Q)=\frac{1}{|Q|}\sum_{x\in Q} A_k(S,x),
+\]
+where $A_k$ is the binary or multiclass margin flag.  Varying $k$ gives a reliability curve that can be compared with LOO error, balanced accuracy, and exact enumerated vulnerability.  For a training prototype $i$, define the exposure score
+\[
+    \mathrm{Exposure}_{i,k}(S,Q)=
+    \sum_{x\in Q} A_k(S,x)\mathbf 1\{i\in N_k(S,x)\}.
+\]
+This counts how often prototype $i$ participates in flagged local decisions.  High-exposure prototypes are natural candidates for relabel checking, inspection, or conservative cleaning.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.82\linewidth]{fig2_margin_mechanism.pdf}
+\caption{Local vote-margin mechanism.  A one-prototype relabeling can remove one vote from the current winner and add one vote to a competitor.  This creates an exact odd-$k$ binary margin condition and a multiclass top-two risk band whose tie cases depend on deterministic tie-breaking.}
+\label{fig:margin-mechanism}
+\end{figure}
+
+For each candidate $k$, we compute deleted-point training LOO error on the prototype set $S$, evaluate $\mathrm{BandRate}$ and, where feasible, $\mathrm{EnumVulnRate}$ on separate validation and test queries, and accumulate prototype exposure scores over the flagged test queries.  For model selection, we restrict attention to $k$ values whose \emph{training} LOO error lies within $\epsilon$ of the best training LOO error, then choose the one with the smallest validation $\mathrm{BandRate}$ or $\mathrm{EnumVulnRate}$.  Final accuracy and PRV summaries are reported only on the held-out test queries.
