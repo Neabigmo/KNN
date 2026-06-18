@@ -26,14 +26,7 @@ Core claim:
 Recommended environment:
 
 ```powershell
-conda activate E:\anaconda3\envs\pytorch-clean
-```
-
-Optional proxy for downloads:
-
-```powershell
-$env:HTTP_PROXY="http://127.0.0.1:7897"
-$env:HTTPS_PROXY="http://127.0.0.1:7897"
+conda activate your_env_name
 ```
 
 Environment check:
