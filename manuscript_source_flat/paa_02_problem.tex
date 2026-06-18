@@ -1,0 +1,51 @@
+\section{Prototype Relabeling Vulnerability in kNN}
+\label{sec:problem}
+
+Let $S=((z_1,y_1),\ldots,(z_n,y_n))$ be an ordered labeled sample in a metric space $(\mathcal X,d)$, with labels in a finite set $\mathcal Y$.  A deterministic kNN classifier orders training occurrences by distance to a query $x$ and then by a fixed tie-breaking rule.  The prediction $h_{S,k}(x)$ is the majority label among the first $k$ occurrences, with deterministic tie-breaking among labels.
+
+\subsection{LOO is an error-estimation diagnostic}
+
+For a training occurrence $i$, LOO removes that occurrence and evaluates the deleted point:
+\[
+    I^{\mathrm{LOO}}_{i,k}(S)
+    =
+    \mathbf 1\{h_{S\setminus i,k}(z_i)\ne y_i\}.
+\]
+This is a useful small-sample error-estimation device.  It answers whether $z_i$ is correctly recovered by the remaining prototypes.  It does not ask whether changing the prototype at index $i$ changes predictions at other query points.
+
+\subsection{Fixed-location relabeling vulnerability}
+
+Let $S^{i\leftarrow (z_i,y')}$ denote the sample obtained by changing the label of occurrence $i$ while keeping its location fixed.  For a query $x$, define the fixed-location relabeling vulnerability indicator
+\[
+    V_{i,k}(S,x)
+    =
+    \mathbf 1\{\exists y'\ne y_i:
+    h_{S^{i\leftarrow (z_i,y')},k}(x)\ne h_{S,k}(x)\}.
+\]
+The query-level vulnerability is
+\[
+    V_k(S,x)=\max_i V_{i,k}(S,x),
+\]
+and the exact enumerated vulnerability rate on an evaluation set $Q$ is
+\[
+    \mathrm{EnumVulnRate}_k(S,Q)
+    =
+    \frac{1}{|Q|}\sum_{x\in Q} V_k(S,x).
+\]
+Let $\mathcal Y_{\mathrm{rep}}(S,i)$ denote the admissible replacement-label set for prototype $i$.  In the main theory, any label in $\mathcal Y\setminus\{y_i\}$ is admissible.  In the experiments, admissible labels are restricted to the class labels observed in the current training split, excluding $y_i$.  For geometric replacement, the candidate may also move in feature space.  The present results are exact for fixed-location one-label relabeling under deterministic voting; when the location also changes, the same margin band should be treated only as a heuristic first-pass screen because the top-$k$ neighborhood itself may change.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}YYY@{}}
+\toprule
+Quantity & Question answered & Role in this paper \\
+\midrule
+LOO indicator & Is the deleted occurrence recovered by the remaining prototypes? & Error-estimation signal \\
+PRV / $\mathrm{EnumVulnRate}_k$ & Can relabeling one retained prototype alter a query prediction? & Prototype-reliability signal \\
+Local vote margin/gap & How far is the local vote from a decision change? & Efficient audit statistic \\
+\bottomrule
+\end{tabularx}
+\caption{LOO and fixed-location relabeling vulnerability answer different reliability questions.}
+\label{tab:paa-notions}
+\end{table}
