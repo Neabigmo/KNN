@@ -1,0 +1,63 @@
+\section{Results}
+\label{sec:results}
+
+The results are organized around five questions.  The first three address the main claim, and the last two show how the same diagnostic can be used more conservatively in model selection and cleaning.
+
+\subsection{Does low LOO error hide relabeling vulnerability?}
+
+Across the benchmark panel, LOO error and relabeling vulnerability measure different phenomena.  After averaging over replicates, 66 dataset-$k$ combinations have LOO error below 0.10, yet 10 of those 66 combinations still have $\mathrm{EnumVulnRate}>0.20$.  Within that low-LOO subset, the mean exact vulnerability rate is 0.192 and the maximum reaches 1.000.  Low LOO error therefore does not guarantee that nearby predictions are insensitive to relabeling one retained prototype.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{fig4_loo_blind_spot.pdf}
+\caption{LOO blind spots across the benchmark panel.  Each point aggregates one dataset and one value of $k$ across replicates.  The shaded region marks the regime with LOO error below 0.10 and exact vulnerability above 0.20, where deleted-point recovery looks good but relabeling risk remains substantial.}
+\label{fig:paa-loo-blind-spot}
+\end{figure}
+
+\subsection{Does the local margin identify vulnerable queries?}
+The local-margin diagnostic is evaluated against enumerated one-label relabeling vulnerability.  The binary signed-margin rule and multiclass top-two gap use only local vote counts and deterministic tie-breaking.  Averaged over all benchmark rows, the margin screen attains F1 = 0.982, recall = 1.000, specificity = 0.974, and false-negative rate = 0.000.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.96\linewidth]{fig3_case_study_profile.pdf}
+\caption{Digits case study.  Panel (a) shows balanced accuracy together with exact relabeling vulnerability and margin-band risk across $k$.  Panel (b) highlights the prototypes with the highest exposure scores.  Panel (c) shows representative flagged queries together with their top-$k$ neighborhoods.}
+\label{fig:paa-case-profile}
+\end{figure}
+
+On Digits, increasing $k$ sharply reduces $\mathrm{EnumVulnRate}$ while changing balanced accuracy only modestly.  The exposed prototypes and flagged neighborhoods show where those fragile local decisions come from.  They are natural targets for relabel checking, domain review, or conservative cleaning.
+
+\IfFileExists{paa_diagnostic_summary_table.tex}{\input{paa_diagnostic_summary_table}}{}
+
+Detailed per-dataset diagnostic rows are reported in Online Resource 1 rather than in the main text so that the central figure and the aggregate benchmark summary remain readable at journal page width.
+
+\subsection{How does it compare with confidence and entropy scores?}
+
+Vote confidence, label entropy, and distance-margin scores are reasonable uncertainty baselines, but they do not encode the exact two-vote effect of relabeling one retained prototype.  The benchmark therefore reports confusion-matrix statistics and, where meaningful, AUROC for all scores under the same train/validation/test splits.  Averaged over rows with defined AUROC, the margin score reaches 0.986, compared with 0.989 for vote confidence, 0.968 for entropy, and 0.841 for the distance-margin score.  Vote confidence can therefore be competitive as a ranking score because it is also a function of local vote counts.  The distinction is different: under the fixed-location model studied here, the margin screen is aligned with the relabeling mechanism and achieves zero false negatives.  Binary and multiclass results should be interpreted separately because the odd-$k$ binary rule is exact, whereas the multiclass gap is a candidate band whose tie cases require additional verification.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.78\linewidth]{fig5_diagnostic_comparison.pdf}
+\caption{Diagnostic comparison for detecting relabeling-vulnerable queries.  The local-margin score is compared with vote confidence, label entropy, and distance-margin baselines under the same benchmark splits.}
+\label{fig:paa-diagnostic-comparison}
+\end{figure}
+
+\subsection{Can margin-aware k selection reduce vulnerability?}
+
+\IfFileExists{paa_margin_k_selection_summary_table.tex}{\input{paa_margin_k_selection_summary_table}}{}
+
+LOO-only $k$ selection chooses the $k$ with minimum training LOO error.  Margin-aware selection first restricts attention to $k$ values whose training LOO error is within $\epsilon$ of the best training LOO error, then chooses the value with the smallest validation $\mathrm{BandRate}$ or $\mathrm{EnumVulnRate}$.  Across the 92 dataset-split decisions, this reduces the mean test-set vulnerability rate by 0.142 while changing balanced accuracy by only -0.003 on average.  PRV improves in 41 of the 92 repeated decisions, ties in 47, and worsens in only 4; balanced accuracy drops by more than 0.01 in 14 cases.  The largest reductions occur when the audit selects a less fragile neighborhood size rather than learning a new decision boundary.  Detailed per-dataset rows are reported in Online Resource 1.  This preserves the role of LOO as an error estimator while adding an explicit reliability constraint and keeping the test split untouched until final reporting.
+
+\subsection{How does it compare with prototype editing and cleaning?}
+
+\IfFileExists{paa_cleaning_baselines_table.tex}{\input{paa_cleaning_baselines_table}}{}
+
+Prototype editing methods such as ENN, RENN, AllKNN, CNN, Tomek links, and NCL remove or condense training samples for noise control, boundary cleaning, or class-balance goals.  The margin-cleaning baseline is more targeted: it flags local decisions that are close to a relabeling flip and removes only vulnerable, locally misclassified prototypes.  We report these results only as an illustrative downstream use of exposure scores.  In the aggregated benchmark, margin-cleaning removes 0.022 of prototypes on average, compared with 0.288 for ENN and 0.309 for RENN, while lowering the mean vulnerability rate from 0.233 under standard kNN to 0.222.
+
+Runtime remains a practical concern.  Exhaustive relabeling enumeration is useful as a ground-truth diagnostic on small samples and scales poorly because it must repeatedly test local decision changes.  The margin screen computes its statistic from vote counts, so it is suitable as a routine first pass before any expensive exhaustive analysis.  The detailed runtime curve and timeout notes are therefore reported in Online Resource 1 rather than in the main figure.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.97\linewidth]{fig6_mitigation_cleaning.pdf}
+\caption{Downstream uses of the diagnostic.  Left: validation-constrained margin-aware k selection adds a PRV constraint to LOO-based selection.  Right: prototype editing and cleaning baselines are compared with margin-cleaning at $k=5$ under an accuracy-vulnerability-removal trade-off.}
+\label{fig:paa-mitigation-cleaning}
+\end{figure}
