@@ -1,0 +1,99 @@
+project:
+  name: paa_rebuild_project
+  manuscript_title: "A Local Vote-Margin Audit for Prototype Replacement Vulnerability in kNN Classification"
+  root: "G:/2026/paa_latest_knn/reproducibility_project"
+  original_package: "G:/2026/paa_latest_knn"
+
+environment:
+  conda_env: "E:/anaconda3/envs/pytorch-clean"
+  python_executable: "E:/anaconda3/envs/pytorch-clean/python.exe"
+  fallback_python_executable: "F:/anaconda3/python.exe"
+  required_packages:
+    - numpy
+    - pandas
+    - scipy
+    - scikit-learn
+    - matplotlib
+    - seaborn
+    - tqdm
+    - pyyaml
+    - requests
+    - joblib
+  optional_packages:
+    - openml
+    - imbalanced-learn
+
+network:
+  use_proxy: true
+  http_proxy: "http://127.0.0.1:7897"
+  https_proxy: "http://127.0.0.1:7897"
+  timeout_seconds: 60
+  retries: 3
+
+execution:
+  random_seed: 20260614
+  replicates: 10
+  max_samples_per_dataset: 1200
+  test_size: 0.35
+  k_values: [1, 3, 5, 7, 9, 11, 15]
+  loo_epsilon: 0.01
+  cleaning_k: 5
+  checkpoint_every_dataset: true
+  stop_on_download_error: false
+  stop_on_experiment_error: false
+
+datasets:
+  offline_builtin:
+    - iris
+    - wine
+    - breast_cancer
+    - digits
+    - digits_0_vs_8
+  synthetic:
+    - two_moons
+    - concentric_circles
+    - four_blobs
+    - noisy_binary
+    - imbalanced_binary
+    - noisy_multiclass
+    - low_separation_multiclass
+    - high_dimensional_sparse
+    - redundant_multiclass
+  openml:
+    enabled: true
+    datasets:
+      - ionosphere
+      - sonar
+      - diabetes
+      - heart-statlog
+      - liver-disorders
+      - haberman
+      - dermatology
+      - parkinsons
+      - vehicle
+      - segment
+
+baselines:
+  diagnostics:
+    - local_margin_top_two_gap
+    - vote_confidence
+    - local_label_entropy
+    - nearest_opposite_distance_margin
+    - distance_weighted_confidence
+  prototype_editing:
+    - standard_knn
+    - edited_nearest_neighbor
+    - repeated_edited_nearest_neighbor
+    - all_knn
+    - condensed_nearest_neighbor
+    - tomek_links
+    - neighborhood_cleaning_rule
+    - margin_clean
+
+outputs:
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  tables_dir: "results/tables"
+  figures_dir: "results/figures"
+  logs_dir: "logs"
+  reports_dir: "reports"
