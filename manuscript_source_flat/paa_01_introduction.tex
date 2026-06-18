@@ -1,0 +1,28 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Nearest-neighbor classification is one of the oldest and still most useful tools in pattern recognition.  It remains common as a baseline, a simple deployed classifier, and a component inside larger recognition systems because it requires little model fitting and makes decisions by local comparison with labeled prototypes \cite{fix1951discriminatory,cover1967nearest,devroye1996probabilistic}.  In small-sample applications, this locality is especially attractive: every labeled sample can be retained, and leave-one-out (LOO) evaluation provides an internal error estimate without reserving a large validation set \cite{kearns1999algorithmic,rogers1978finite,devroye1979distribution}.
+
+The same locality creates a reliability question that standard error estimates do not answer.  In a $k$-nearest-neighbor (kNN) classifier, each training sample is also a local decision prototype.  In medical, tabular, and other small-sample settings, a corrected label or a mislabeled prototype can alter decisions for nearby queries even when the usual LOO indicators look benign.  LOO evaluates whether the deleted occurrence is recovered by the remaining data.  Relabeling vulnerability evaluates whether changing one retained prototype changes predictions elsewhere.  These are different questions.
+
+We study that distinction in deterministic kNN.  We focus on \emph{fixed-location prototype relabeling vulnerability}: whether changing the label of one training prototype while keeping its location fixed can flip the prediction at a query.  Throughout the paper, we use \emph{PRV} as shorthand for this fixed-location relabeling vulnerability unless otherwise stated.  The question is narrower than algorithmic-stability theory, which connects perturbation sensitivity to generalization and learnability at a broader level \cite{bousquet2002stability,shalev2010learnability,hardt2016train}.
+
+The mechanism is simple.  One fixed-location relabeling can remove one vote from the current winner and add one vote to a competitor.  The local vote margin is therefore the key quantity.  For binary labels, the relevant quantity is the signed top-$k$ margin.  For multiclass labels, it is the top-two local vote gap together with deterministic tie-breaking.  For odd $k$ in the binary setting, the exact one-relabeling condition is $|M_k|=1$.  In the multiclass setting, the top-two gap gives a cheap candidate band whose exact status depends on the admissible replacement labels and the tie rule.
+
+The paper makes four contributions.
+
+\begin{enumerate}[leftmargin=*]
+    \item We show that deleted-point LOO error and fixed-location prototype relabeling answer different questions in kNN.
+    \item We derive a local vote-margin characterization for binary and multiclass kNN, separating the exact odd-$k$ binary condition from the broader multiclass risk band.
+    \item We prove finite metric-space constructions showing that all deleted-point LOO indicators can vanish while a single fixed-location prototype relabeling flips a prediction.
+    \item We validate the margin screen on 23 benchmark datasets and compare it with exact enumeration and standard uncertainty baselines \cite{hart1968condensed,wilson1972edited,tomek1976two,laurikkala2001ncl,batista2004study,garcia2012prototype,frenay2014classification,jiang2018trust}.
+\end{enumerate}
+
+In the benchmarks below, low LOO error often coexists with non-negligible relabeling vulnerability.  The local vote margin identifies which queries are close to a flip and which prototypes repeatedly participate in those fragile decisions.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.96\linewidth]{fig1_audit_framework.pdf}
+\caption{LOO versus fixed-location relabeling.  Leave-one-out deletes occurrence $i$ and evaluates recovery at the deleted point $z_i$, whereas fixed-location relabeling keeps the location of occurrence $i$ but changes its label and evaluates whether the prediction at a query point $x$ changes.}
+\label{fig:audit-framework}
+\end{figure}
