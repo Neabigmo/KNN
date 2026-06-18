@@ -8,7 +8,7 @@ The rebuild is intentionally separated from `paa_submission_package/` so that lo
 
 ## Directory Layout
 
-- `config/`: YAML configuration for environment, proxy, datasets, baselines, and manuscript targets.
+- `config/`: YAML configuration for environment, datasets, baselines, and manuscript targets.
 - `scripts/`: executable Python utilities with progress bars, lockfiles, structured logging, and error reporting.
 - `data/raw/`: downloaded or manually provided datasets.
 - `data/processed/`: standardized cached datasets used by experiments.
@@ -24,17 +24,10 @@ The rebuild is intentionally separated from `paa_submission_package/` so that lo
 Preferred environment:
 
 ```powershell
-conda activate E:\anaconda3\envs\pytorch-clean
+conda activate your_env_name
 ```
 
 The runner also accepts an explicit Python path through `config/paa_rebuild_config.yaml`.
-
-Recommended proxy for downloads:
-
-```powershell
-$env:HTTP_PROXY="http://127.0.0.1:7897"
-$env:HTTPS_PROXY="http://127.0.0.1:7897"
-```
 
 ## Main Commands
 
