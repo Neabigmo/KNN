@@ -42,9 +42,9 @@ def save(fig: plt.Figure, stem: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tables-dir", default="G:/2026/paa_latest_knn/reproducibility_project/results/tables")
-    parser.add_argument("--figures-dir", default="G:/2026/paa_latest_knn/reproducibility_project/results/figures")
-    parser.add_argument("--processed-dir", default="G:/2026/paa_latest_knn/reproducibility_project/data/processed")
+    parser.add_argument("--tables-dir", default="results/tables")
+    parser.add_argument("--figures-dir", default="results/figures")
+    parser.add_argument("--processed-dir", default="data/processed")
     args = parser.parse_args()
 
     tables = Path(args.tables_dir)
