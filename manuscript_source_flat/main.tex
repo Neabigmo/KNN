@@ -1,0 +1,82 @@
+% Pattern Analysis and Applications manuscript.
+% Template assets in this directory were refreshed from:
+% G:\2026\paa_latest_knn\Download+the+journal+article+template+package+(December+2024+version)\sn-article-template
+
+\documentclass[pdflatex,sn-vancouver-num]{sn-jnl}
+
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsfonts,mathtools}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[capitalize,nameinlink]{cleveref}
+\usepackage{placeins}
+
+\theoremstyle{thmstyleone}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\crefname{proposition}{Proposition}{Propositions}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{thmstyletwo}
+\newtheorem{remark}{Remark}
+\newtheorem{note}{Note}
+\theoremstyle{thmstylethree}
+\newtheorem{definition}{Definition}
+
+\newcommand{\del}{\mathrm{del}}
+\newcommand{\rep}{\mathrm{rep}}
+\newcommand{\loo}{\mathrm{loo}}
+\newcommand{\ins}{\mathrm{ins}}
+\newcommand{\NN}{\mathrm{NN}}
+\newcommand{\loss}{\ell}
+\newcommand{\ind}[1]{\mathbf{1}\!\left\{#1\right\}}
+\newcommand{\metric}{\mathcal{X}}
+\newcommand{\sample}{\mathcal{S}}
+\newcommand{\margin}{M}
+\newcommand{\M}{\margin}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\raggedbottom
+
+\begin{document}
+
+\title[LOO can miss relabeling vulnerability in kNN]{Leave-One-Out Can Miss Prototype Relabeling Vulnerability in kNN Classification}
+
+\author*[1]{\fnm{Yiheng} \sur{Yang}}\email{yangyiheng@mail.dlut.edu.cn}
+\author[2]{\fnm{Zhenzhou} \sur{Feng}}
+\affil*[1]{\orgdiv{Future Technology School}, \orgname{Dalian University of Technology}, \orgaddress{\city{Dalian}, \country{China}}}
+\affil[2]{\orgdiv{School of Mathematical Sciences}, \orgname{Dalian University of Technology}, \orgaddress{\city{Dalian}, \state{Liaoning}, \country{China}}}
+
+\abstract{$k$-nearest-neighbor (kNN) classification uses training samples as local decision prototypes.  This creates a reliability question that leave-one-out (LOO) evaluation does not directly test: a deleted training point may be correctly recovered by the remaining sample, while changing the label of one retained prototype may still flip predictions at other queries.  We formalize this phenomenon as fixed-location prototype relabeling vulnerability (PRV) for deterministic kNN.  The key mechanism is local voting margin: one relabeling can remove one vote from the current winner and add one vote to a competitor.  For binary kNN with odd $k$, this gives the exact vulnerability condition $|M_k|=1$; for multiclass kNN, the top-two vote gap gives a conservative candidate band whose exact status depends on admissible replacement labels and deterministic tie-breaking.  We also prove finite metric constructions in which all deleted-point LOO indicators vanish although one prototype relabeling flips a query prediction.  Experiments on 23 small-to-medium benchmarks show that low LOO error can coexist with substantial relabeling vulnerability, and that the vote-margin band provides a cheap screen for locating fragile queries and exposed prototypes.}
+
+\keywords{k-nearest neighbors, pattern classification, prototype relabeling, leave-one-out evaluation, local reliability, vote margin}
+
+\maketitle
+
+\input{paa_01_introduction}
+\input{paa_02_problem}
+\input{paa_03_margin_diagnostic}
+\input{paa_04_loo_blind_spot}
+\input{paa_05_experimental_protocol}
+\input{paa_06_results}
+\input{paa_07_discussion}
+\input{paa_08_conclusion}
+
+\appendix
+\input{paa_A_proofs_and_legacy_theory}
+\input{paa_B_additional_protocol}
+\input{paa_C_reproducibility}
+
+\backmatter
+
+\bmhead{Supplementary information}
+Code, generated data, figures, tables, and the reproducibility manifest are provided in Online Resource 1.
+
+\input{declarations}
+
+\bibliography{refs}
+
+\end{document}
