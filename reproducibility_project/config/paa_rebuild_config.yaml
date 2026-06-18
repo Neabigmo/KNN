@@ -1,13 +1,13 @@
 project:
   name: paa_rebuild_project
   manuscript_title: "A Local Vote-Margin Audit for Prototype Replacement Vulnerability in kNN Classification"
-  root: "G:/2026/paa_latest_knn/reproducibility_project"
-  original_package: "G:/2026/paa_latest_knn"
+  root: "."
+  original_package: ".."
 
 environment:
-  conda_env: "E:/anaconda3/envs/pytorch-clean"
-  python_executable: "E:/anaconda3/envs/pytorch-clean/python.exe"
-  fallback_python_executable: "F:/anaconda3/python.exe"
+  conda_env: ""
+  python_executable: ""
+  fallback_python_executable: ""
   required_packages:
     - numpy
     - pandas
@@ -24,9 +24,9 @@ environment:
     - imbalanced-learn
 
 network:
-  use_proxy: true
-  http_proxy: "http://127.0.0.1:7897"
-  https_proxy: "http://127.0.0.1:7897"
+  use_proxy: false
+  http_proxy: ""
+  https_proxy: ""
   timeout_seconds: 60
   retries: 3
 
