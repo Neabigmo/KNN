@@ -1,0 +1,41 @@
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Local environments
+.venv/
+venv/
+env/
+
+# Conda / local IDE noise
+.idea/
+.vscode/
+
+# OS noise
+Thumbs.db
+Desktop.ini
+
+# Generated manuscript build products
+manuscript_source_flat/*.aux
+manuscript_source_flat/*.bbl
+manuscript_source_flat/*.blg
+manuscript_source_flat/*.fdb_latexmk
+manuscript_source_flat/*.fls
+manuscript_source_flat/*.log
+manuscript_source_flat/*.out
+manuscript_source_flat/page*_check-*.png
+
+# Large or local-only experiment artifacts
+reproducibility_project/data/raw/
+reproducibility_project/data/processed/
+reproducibility_project/logs/
+reproducibility_project/reports/
+reproducibility_project/results/
+
+# Submission bundles
+submission_package/*.zip
+supplementary/*.zip
