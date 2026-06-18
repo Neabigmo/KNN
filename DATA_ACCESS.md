@@ -39,14 +39,7 @@ The benchmark uses three data sources:
 ## Recommended environment
 
 ```powershell
-conda activate E:\anaconda3\envs\pytorch-clean
-```
-
-If download access requires a proxy, set:
-
-```powershell
-$env:HTTP_PROXY="http://127.0.0.1:7897"
-$env:HTTPS_PROXY="http://127.0.0.1:7897"
+conda activate your_env_name
 ```
 
 ## How to acquire data
