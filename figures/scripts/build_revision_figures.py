@@ -329,10 +329,20 @@ def fig6_operations() -> None:
         for row in read_csv("e9_runtime.csv")
         if row.get("benchmark_family") == "deterministic_influence"
     ]
+    probability = [
+        row
+        for row in read_csv("e9_runtime.csv")
+        if row.get("benchmark_family") in {
+            "shared_probability_fixed_train",
+            "shared_probability_overlap_sweep",
+        }
+        and row.get("method") in {"overlap_graph_exact", "dense_pairwise_exact"}
+    ]
     ties = read_csv("e7_tie_weight_imbalance.csv")
     geometry = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "relabel_plus_radial_displacement"]
     weighted = [r for r in ties if r.get("policy") == "weighted_vote"]
-    fig, axes = plt.subplots(1, 3, figsize=(10.4, 3.0))
+    fig, axes = plt.subplots(2, 2, figsize=(9.2, 6.0))
+    axes = axes.ravel()
     for row in geometry:
         delta = float(row["delta"])
         fixed = int(row["fixed_label_prediction_changed"] == "True")
@@ -359,10 +369,46 @@ def fig6_operations() -> None:
     axes[2].set(xlabel="training prototypes", ylabel="reference / exact time")
     panel_label(axes[2], "c")
     axes[2].legend(frameon=False, fontsize=7)
+    fixed = [r for r in probability if r.get("benchmark_family") == "shared_probability_fixed_train"]
+    fixed_overlap = {int(r["n_query"]): r for r in fixed if r["method"] == "overlap_graph_exact"}
+    fixed_dense = {int(r["n_query"]): r for r in fixed if r["method"] == "dense_pairwise_exact"}
+    fixed_q = sorted(set(fixed_overlap) & set(fixed_dense))
+    fixed_speedups = [
+        float(fixed_dense[q]["runtime_median_seconds"])
+        / float(fixed_overlap[q]["runtime_median_seconds"])
+        for q in fixed_q
+    ]
+    sweep = [r for r in probability if r.get("benchmark_family") == "shared_probability_overlap_sweep"]
+    sweep_overlap = {r["overlap_mode"]: r for r in sweep if r["method"] == "overlap_graph_exact"}
+    sweep_dense = {r["overlap_mode"]: r for r in sweep if r["method"] == "dense_pairwise_exact"}
+    if sweep_overlap and sweep_dense:
+        modes = ["disjoint", "block_shared", "chain", "fully_shared"]
+        edge_values = [float(sweep_overlap[m]["overlap_pair_fraction"]) for m in modes]
+        speed_values = [
+            float(sweep_dense[m]["runtime_median_seconds"])
+            / float(sweep_overlap[m]["runtime_median_seconds"])
+            for m in modes
+        ]
+        labels = [f"q={q}" for q in fixed_q] + [m.replace("_", " ") for m in modes]
+        values = fixed_speedups + speed_values
+        positions = np.arange(len(values))
+        colors = ["#377eb8"] * len(fixed_speedups) + ["#d95f02"] * len(speed_values)
+        axes[3].bar(positions, values, color=colors, width=0.72)
+        axes[3].set_xticks(positions, labels, rotation=35, ha="right", fontsize=7)
+        axes[3].axhline(1.0, color="#555555", lw=0.8, ls=":")
+        axes[3].set_xlabel("fixed-training rows (blue) / overlap modes (orange)")
+    elif fixed_speedups:
+        axes[3].plot(fixed_q, fixed_speedups, "o-", color="#377eb8", label="fixed $n=1280$")
+        axes[3].set_xlabel("query count (fixed $n=1280$)")
+    else:
+        axes[3].set_xlabel("control")
+    axes[3].set_ylabel("dense / overlap exact time")
+    panel_label(axes[3], "d")
     write_panel("fig6_operations_panels.csv", [
         *[{"panel": "a", **r} for r in geometry],
         *[{"panel": "b", **r} for r in weighted],
         *[{"panel": "c", **r} for r in runtime],
+        *[{"panel": "d", **r} for r in probability],
     ])
     save(fig, "fig6_reproducibility_operations")
 

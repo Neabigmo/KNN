@@ -8,7 +8,7 @@ feature dimension, `k` the neighborhood size, and `C` the number of classes.
 | Blocked squared distances | O(nqd) | O(nq) output plus one query block | No q-by-n-by-d tensor |
 | Stable neighbor cache | O(nq log n) after distances | O(qk) | Stable index tie-break |
 | Vote counts | O(qk) | O(qC) | Reused by all diagnostics |
-| Exact directional influence | O(qkC) | O(qn) boolean matrix plus O(nC) | One count update per allowed direction |
+| Exact directional influence | O(qkC^2) | O(qn) boolean matrix plus O(nC) | Up to C-1 replacement labels; each updated vote vector scans C classes for the winner |
 | Naive reference | O(nC qk) plus repeated allocations | O(qk) | Used only for correctness/timing |
 | One binary Poisson-binomial query | O(k^2) | O(k) | Heterogeneous probabilities |
 | Dense pairwise binary batch moments | O(q^2 k^3) | O(k^2) sequential working state | Runs the joint DP for every query pair |

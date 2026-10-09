@@ -122,6 +122,12 @@ training prototypes is larger than the neighborhood size.  The experiment
 records these as structural separation examples rather than treating the two
 risks as interchangeable estimators.
 
+For the same binary odd-`k` setting, define directional concentration by
+`H = max_i I_i / sum_i I_i`.  The incidence identity gives the exact
+normalization `R_1 / R_point = ((k+1)/2) H`.  This is a structural
+reparameterization, not an independent empirical correlation.  No scalar
+equality is claimed for multiclass replacement sets or even-`k` tie policies.
+
 ## Proposition 5: classification-error change
 
 For a fixed replacement direction `i -> c`, with true query labels `y_t^*`,

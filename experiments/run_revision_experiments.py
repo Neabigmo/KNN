@@ -1346,6 +1346,134 @@ def run_e9() -> None:
                 }
             )
 
+    def append_probability_panel(
+        *,
+        benchmark_family: str,
+        panel: str,
+        n: int,
+        q: int,
+        k: int,
+        neighbors: np.ndarray,
+        y_train: np.ndarray,
+        probabilities: np.ndarray,
+        seed: int,
+        overlap_mode: str,
+        timing_repeats: int = 5,
+        dense_repeats: int = 3,
+        mc_repeats: int = 5,
+    ) -> None:
+        """Record exact dense/overlap/Monte Carlo timings for one control panel."""
+        overlap, overlap_timing = timed(
+            lambda: batch_risk_moments(
+                y_train, neighbors, probabilities, classes=[0, 1]
+            ),
+            repeats=timing_repeats,
+        )
+        dense, dense_timing = timed(
+            lambda: dense_batch_risk_moments(
+                y_train, neighbors, probabilities, classes=[0, 1]
+            ),
+            repeats=dense_repeats,
+        )
+        if not np.allclose(
+            [overlap.expectation, overlap.variance],
+            [dense.expectation, dense.variance],
+            atol=1e-13,
+        ):
+            raise RuntimeError(f"E9 dense and overlap paths disagree in {panel}")
+        monte_carlo, mc_timing = timed(
+            lambda: monte_carlo_batch_risk(
+                y_train,
+                neighbors,
+                probabilities,
+                repetitions=500,
+                classes=[0, 1],
+                seed=seed,
+            ),
+            repeats=mc_repeats,
+        )
+        common = {
+            "benchmark_family": benchmark_family,
+            "panel": panel,
+            "overlap_mode": overlap_mode,
+            "n_train": n,
+            "n_query": q,
+            "k": k,
+            "overlap_pair_count": overlap.overlap_pair_count,
+            "total_query_pairs": overlap.total_query_pairs,
+            "overlap_pair_fraction": (
+                overlap.overlap_pair_count / overlap.total_query_pairs
+                if overlap.total_query_pairs
+                else 0.0
+            ),
+            "exact_expectation": overlap.expectation,
+            "exact_variance": overlap.variance,
+        }
+        rows.extend(
+            [
+                {
+                    **common,
+                    "method": "overlap_graph_exact",
+                    "timing_repeats": overlap_timing["repeats"],
+                    "timing_warmups": overlap_timing["warmups"],
+                    "runtime_median_seconds": overlap_timing["median"],
+                    "runtime_q1_seconds": overlap_timing["q1"],
+                    "runtime_q3_seconds": overlap_timing["q3"],
+                    "peak_traced_bytes": peak_bytes(
+                        lambda: batch_risk_moments(
+                            y_train, neighbors, probabilities, classes=[0, 1]
+                        )
+                    ),
+                    "expectation_estimate": overlap.expectation,
+                    "variance_estimate": overlap.variance,
+                },
+                {
+                    **common,
+                    "method": "dense_pairwise_exact",
+                    "timing_repeats": dense_timing["repeats"],
+                    "timing_warmups": dense_timing["warmups"],
+                    "runtime_median_seconds": dense_timing["median"],
+                    "runtime_q1_seconds": dense_timing["q1"],
+                    "runtime_q3_seconds": dense_timing["q3"],
+                    "peak_traced_bytes": peak_bytes(
+                        lambda: dense_batch_risk_moments(
+                            y_train, neighbors, probabilities, classes=[0, 1]
+                        )
+                    ),
+                    "expectation_estimate": dense.expectation,
+                    "variance_estimate": dense.variance,
+                },
+                {
+                    **common,
+                    "method": "shared_label_monte_carlo",
+                    "timing_repeats": mc_timing["repeats"],
+                    "timing_warmups": mc_timing["warmups"],
+                    "runtime_median_seconds": mc_timing["median"],
+                    "runtime_q1_seconds": mc_timing["q1"],
+                    "runtime_q3_seconds": mc_timing["q3"],
+                    "peak_traced_bytes": peak_bytes(
+                        lambda: monte_carlo_batch_risk(
+                            y_train,
+                            neighbors,
+                            probabilities,
+                            repetitions=500,
+                            classes=[0, 1],
+                            seed=seed,
+                        )
+                    ),
+                    "monte_carlo_repetitions": 500,
+                    "expectation_estimate": float(np.mean(monte_carlo)),
+                    "variance_estimate": float(np.var(monte_carlo)),
+                    "expectation_absolute_error": abs(
+                        float(np.mean(monte_carlo)) - overlap.expectation
+                    ),
+                    "variance_absolute_error": abs(
+                        float(np.var(monte_carlo)) - overlap.variance
+                    ),
+                },
+            ]
+        )
+
     probability_rng = np.random.default_rng(20261009)
     for q in (40, 80, 160, 320):
         n = max(320, 4 * q)
@@ -1360,13 +1488,13 @@ def run_e9() -> None:
             lambda: batch_risk_moments(
                 y_train, cache.indices, probabilities, classes=[0, 1]
             ),
-            repeats=5,
+            repeats=1 if q >= 320 else 5,
         )
         dense, dense_timing = timed(
             lambda: dense_batch_risk_moments(
                 y_train, cache.indices, probabilities, classes=[0, 1]
             ),
-            repeats=3,
+            repeats=1 if q >= 320 else 3,
         )
         if not np.allclose(
             [overlap.expectation, overlap.variance],
@@ -1383,7 +1511,7 @@ def run_e9() -> None:
                 classes=[0, 1],
                 seed=20261009 + q,
             ),
-            repeats=5,
+            repeats=1 if q >= 320 else 5,
         )
         common = {
             "benchmark_family": "shared_probability",
@@ -1463,6 +1591,65 @@ def run_e9() -> None:
                     ),
                 },
             ]
+        )
+
+    # Control 1: hold the training size at 1,280 while query count grows.
+    # This separates query-count scaling from the variable-n geometry panel.
+    fixed_train_rng = np.random.default_rng(20261010)
+    fixed_train_n = 1280
+    fixed_train_x = fixed_train_rng.normal(size=(fixed_train_n, 6))
+    fixed_train_y = fixed_train_rng.integers(0, 2, size=fixed_train_n)
+    fixed_train_probabilities = np.full(fixed_train_n, 0.05)
+    for q in (40, 80, 160):
+        fixed_query_x = fixed_train_rng.normal(size=(q, 6))
+        fixed_cache = build_neighbor_cache(fixed_train_x, fixed_query_x, 5)
+        append_probability_panel(
+            benchmark_family="shared_probability_fixed_train",
+            panel="fixed_train_query_scaling",
+            n=fixed_train_n,
+            q=q,
+            k=5,
+            neighbors=fixed_cache.indices,
+            y_train=fixed_train_y,
+            probabilities=fixed_train_probabilities,
+            seed=20261010 + q,
+            overlap_mode="random_geometry",
+        )
+
+    # Control 2: hold (n, q, k) fixed while changing neighborhood sharing.
+    # The direct neighbor matrices isolate overlap density from feature geometry.
+    overlap_n, overlap_q, overlap_k = 1280, 80, 5
+    overlap_y = np.random.default_rng(20261011).integers(0, 2, size=overlap_n)
+    overlap_probabilities = np.full(overlap_n, 0.05)
+    overlap_modes = {
+        "disjoint": np.arange(overlap_q * overlap_k, dtype=int).reshape(overlap_q, overlap_k),
+        "chain": np.arange(overlap_k, dtype=int)[None, :]
+        + np.arange(overlap_q, dtype=int)[:, None],
+        "block_shared": np.empty((overlap_q, overlap_k), dtype=int),
+        "fully_shared": np.tile(np.arange(overlap_k, dtype=int), (overlap_q, 1)),
+    }
+    block_neighbors = overlap_modes["block_shared"]
+    for query_idx in range(overlap_q):
+        block = query_idx // 8
+        start = overlap_q + block * (overlap_k - 1)
+        block_neighbors[query_idx] = np.array(
+            [block, start, start + 1, start + 2, start + 3], dtype=int
+        )
+    for mode, neighbors in overlap_modes.items():
+        append_probability_panel(
+            benchmark_family="shared_probability_overlap_sweep",
+            panel="fixed_query_overlap_sweep",
+            n=overlap_n,
+            q=overlap_q,
+            k=overlap_k,
+            neighbors=neighbors,
+            y_train=overlap_y,
+            probabilities=overlap_probabilities,
+            seed=20261020 + len(mode),
+            overlap_mode=mode,
+            timing_repeats=2,
+            dense_repeats=1,
+            mc_repeats=2,
         )
     save_csv(PROCESSED_DIR / "e9_runtime.csv", rows)
 
