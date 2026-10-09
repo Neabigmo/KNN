@@ -53,7 +53,7 @@ def save(fig: plt.Figure, stem: str) -> None:
 def fig1_framework() -> None:
     """Show correct LOO decisions alongside a retained-prototype flip."""
 
-    fig, axes = plt.subplots(1, 2, figsize=(9.2, 3.2))
+    fig, axes = plt.subplots(1, 2, figsize=(9.2, 3.8))
     colors = {0: "#377eb8", 1: "#d95f02"}
     points = np.array([
         [-2.00, -0.15], [-1.80, 0.05], [-1.60, -0.05],
@@ -91,11 +91,11 @@ def fig1_framework() -> None:
     assert int(base_prediction[0]) == 0
     assert loo_correct == len(points)
     assert int(relabel_prediction[0]) == 1
-    axes[0].scatter(points[:, 0], points[:, 1], s=45,
+    axes[0].scatter(points[:, 0], points[:, 1], s=60,
                     c=[colors[int(y)] for y in labels], edgecolor="white", linewidth=0.7)
-    axes[0].scatter(points[2, 0], points[2, 1], s=75, facecolors="none",
+    axes[0].scatter(points[2, 0], points[2, 1], s=95, facecolors="none",
                     edgecolors="#777777", linewidth=1.2, zorder=3)
-    axes[0].scatter(*query[0], marker="*", s=120, c="black", zorder=4)
+    axes[0].scatter(*query[0], marker="*", s=145, c="black", zorder=4)
     for neighbor_index in query_cache.indices[0]:
         axes[0].plot(
             [query[0, 0], points[neighbor_index, 0]],
@@ -103,16 +103,16 @@ def fig1_framework() -> None:
             color="#999999", lw=0.8, ls="--", zorder=0,
         )
     for index, (x, y) in enumerate(points, start=1):
-        axes[0].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=8)
-    axes[0].set_title(f"All training-point LOO predictions correct ({loo_correct}/{len(points)})")
+        axes[0].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=9)
+    axes[0].set_title(f"All training-point LOO predictions correct ({loo_correct}/{len(points)})", fontsize=10)
     axes[0].text(
         0.5, 0.05,
         f"independent query votes {base_counts[0].tolist()} $\\rightarrow$ class {int(base_prediction[0])}",
-        transform=axes[0].transAxes, ha="center", va="bottom", fontsize=8,
+        transform=axes[0].transAxes, ha="center", va="bottom", fontsize=8.5,
     )
     panel_label(axes[0], "a")
 
-    axes[1].scatter(points[:, 0], points[:, 1], s=45,
+    axes[1].scatter(points[:, 0], points[:, 1], s=60,
                     c=[colors[int(y)] for y in changed_labels], edgecolor="white", linewidth=0.7)
     axes[1].scatter(*query[0], marker="*", s=120, c="black", zorder=4)
     for neighbor_index in query_cache.indices[0]:
@@ -122,15 +122,15 @@ def fig1_framework() -> None:
             color="#999999", lw=0.8, ls="--", zorder=0,
         )
     for index, (x, y) in enumerate(points, start=1):
-        axes[1].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=8)
+        axes[1].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=9)
     axes[1].annotate("$z_3$: 0 $\\to$ 1", xy=points[2], xytext=(-1.48, 0.34),
-                     arrowprops={"arrowstyle": "->", "color": "#984ea3"}, color="#984ea3", fontsize=8)
-    axes[1].set_title("One retained-label replacement flips the query")
+                     arrowprops={"arrowstyle": "->", "color": "#984ea3"}, color="#984ea3", fontsize=9)
+    axes[1].set_title("One retained-label replacement flips the query", fontsize=10)
     axes[1].text(
         0.5, 0.05,
         f"votes {base_counts[0].tolist()} $\\rightarrow$ {relabel_counts[0].tolist()}; "
         f"class {int(base_prediction[0])} $\\rightarrow$ {int(relabel_prediction[0])}",
-        transform=axes[1].transAxes, ha="center", va="bottom", fontsize=8,
+        transform=axes[1].transAxes, ha="center", va="bottom", fontsize=8.5,
     )
     panel_label(axes[1], "b")
     xmin = float(points[:, 0].min() - 0.35)
@@ -141,8 +141,11 @@ def fig1_framework() -> None:
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(ymin, ymax)
         ax.set_aspect("equal")
-        ax.set_xticks([])
-        ax.set_yticks([])
+        ax.set_xticks([-2, -1, 0, 1])
+        ax.set_yticks([-0.5, 0, 0.5])
+        ax.tick_params(labelsize=8)
+        ax.set_xlabel("feature 1", fontsize=8)
+        ax.set_ylabel("feature 2", fontsize=8)
         for spine in ax.spines.values():
             spine.set_color("#bbbbbb")
     write_panel("fig1_revision_framework_panels.csv", [
@@ -340,19 +343,21 @@ def fig6_operations() -> None:
     ]
     ties = read_csv("e7_tie_weight_imbalance.csv")
     geometry = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "relabel_plus_radial_displacement"]
+    boundary = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "vote_gap_stratified_boundary_motion"]
     weighted = [r for r in ties if r.get("policy") == "weighted_vote"]
-    fig, axes = plt.subplots(2, 2, figsize=(9.2, 6.0))
+    fig, axes = plt.subplots(2, 3, figsize=(11.4, 6.3))
     axes = axes.ravel()
-    for row in geometry:
-        delta = float(row["delta"])
-        fixed = int(row["fixed_label_prediction_changed"] == "True")
-        combined = int(row["combined_prediction_changed"] == "True")
-        axes[0].scatter(delta, fixed, marker="o", color="#377eb8", s=35)
-        axes[0].scatter(delta, combined, marker="x", color="#d95f02", s=40)
-    axes[0].set(xlabel="radial displacement", ylabel="prediction change")
+    gap_order = ["low_gap", "mid_gap", "high_gap"]
+    boundary_by_gap = {row["vote_gap_group"]: row for row in boundary}
+    gaps = [int(boundary_by_gap[group]["pre_change_vote_gap"]) for group in gap_order]
+    axes[0].plot(gaps, [float(boundary_by_gap[group]["fixed_label_change_rate"]) for group in gap_order], "o-", label="fixed relabel")
+    axes[0].plot(gaps, [float(boundary_by_gap[group]["geometry_prediction_changed_rate"]) for group in gap_order], "^-", label="geometry only")
+    axes[0].plot(gaps, [float(boundary_by_gap[group]["combined_prediction_changed_rate"]) for group in gap_order], "x-", label="combined")
+    axes[0].set(xlabel="pre-change top-two vote gap", ylabel="prediction-change rate")
+    axes[0].set_xticks(gaps, ["low\n(1)", "mid\n(3)", "high\n(5)"])
+    axes[0].set_ylim(-0.05, 1.05)
     panel_label(axes[0], "a")
-    axes[0].set_yticks([0, 1], ["no", "yes"])
-    axes[0].legend(["fixed label", "combined"], frameon=False, fontsize=7)
+    axes[0].legend(frameon=False, fontsize=7)
     for case in sorted({r["case"] for r in weighted}):
         subset = [r for r in weighted if r["case"] == case]
         axes[1].plot([float(r["power"]) for r in subset], [float(r["weighted_margin"]) for r in subset], "o-", label=case.replace("_", " "))
@@ -381,6 +386,10 @@ def fig6_operations() -> None:
     sweep = [r for r in probability if r.get("benchmark_family") == "shared_probability_overlap_sweep"]
     sweep_overlap = {r["overlap_mode"]: r for r in sweep if r["method"] == "overlap_graph_exact"}
     sweep_dense = {r["overlap_mode"]: r for r in sweep if r["method"] == "dense_pairwise_exact"}
+    axes[3].plot(fixed_q, fixed_speedups, "o-", color="#377eb8")
+    axes[3].set(xlabel="query count (fixed $n=1280$)", ylabel="dense / overlap exact time")
+    panel_label(axes[3], "d")
+    axes[3].axhline(1.0, color="#555555", lw=0.8, ls=":")
     if sweep_overlap and sweep_dense:
         modes = ["disjoint", "block_shared", "chain", "fully_shared"]
         edge_values = [float(sweep_overlap[m]["overlap_pair_fraction"]) for m in modes]
@@ -389,26 +398,24 @@ def fig6_operations() -> None:
             / float(sweep_overlap[m]["runtime_median_seconds"])
             for m in modes
         ]
-        labels = [f"q={q}" for q in fixed_q] + [m.replace("_", " ") for m in modes]
-        values = fixed_speedups + speed_values
-        positions = np.arange(len(values))
-        colors = ["#377eb8"] * len(fixed_speedups) + ["#d95f02"] * len(speed_values)
-        axes[3].bar(positions, values, color=colors, width=0.72)
-        axes[3].set_xticks(positions, labels, rotation=35, ha="right", fontsize=7)
-        axes[3].axhline(1.0, color="#555555", lw=0.8, ls=":")
-        axes[3].set_xlabel("fixed-training rows (blue) / overlap modes (orange)")
-    elif fixed_speedups:
-        axes[3].plot(fixed_q, fixed_speedups, "o-", color="#377eb8", label="fixed $n=1280$")
-        axes[3].set_xlabel("query count (fixed $n=1280$)")
+        positions = np.arange(len(modes))
+        axes[4].bar(positions, speed_values, color="#d95f02", width=0.72)
+        axes[4].set_xticks(positions, [m.replace("_", " ") for m in modes], rotation=30, ha="right", fontsize=7)
+        axes[4].set(xlabel="query-overlap pattern", ylabel="dense / overlap exact time")
+        axes[4].axhline(1.0, color="#555555", lw=0.8, ls=":")
+        for position, speed, edge in zip(positions, speed_values, edge_values):
+            axes[4].text(position, speed, f"edge {edge:.2f}", ha="center", va="bottom", fontsize=7)
     else:
-        axes[3].set_xlabel("control")
-    axes[3].set_ylabel("dense / overlap exact time")
-    panel_label(axes[3], "d")
+        axes[4].set_axis_off()
+    panel_label(axes[4], "e")
+    axes[5].set_axis_off()
     write_panel("fig6_operations_panels.csv", [
+        *[{"panel": "a", **r} for r in boundary],
         *[{"panel": "a", **r} for r in geometry],
         *[{"panel": "b", **r} for r in weighted],
         *[{"panel": "c", **r} for r in runtime],
-        *[{"panel": "d", **r} for r in probability],
+        *[{"panel": "d", **r} for r in probability if r.get("benchmark_family") == "shared_probability_fixed_train"],
+        *[{"panel": "e", **r} for r in probability if r.get("benchmark_family") == "shared_probability_overlap_sweep"],
     ])
     save(fig, "fig6_reproducibility_operations")
 

@@ -200,7 +200,43 @@ event has probability `2p_i(1-p_i)`, yielding the bound.  Query indicators
 are therefore not treated as independent.  The exact pairwise dynamic
 program in `probability.py` is used when a binary batch permits it.
 
-## Proposition 9: heterogeneous local concentration bound
+## Proposition 9: first-order variance expansion at independent-flip probability zero
+
+Let `Z_t(B)` indicate whether query `t` changes under a binary flip vector and
+let `R_epsilon=q^{-1} sum_t Z_t(B)`, where the coordinates of `B` are
+independent Bernoulli(`epsilon`).  Let `I_i` be the number of query indicators
+that change when only prototype `i` is flipped from the observed label.  Then,
+for fixed neighborhoods and `epsilon` tending to zero,
+
+`E[R_epsilon] = (epsilon/q) sum_i I_i + O(epsilon^2)`
+
+and
+
+`Var(R_epsilon) = (epsilon/q^2) sum_i I_i^2 + O(epsilon^2)`.
+
+For binary odd `k`, writing `c=(k+1)/2` and using the pivotal incidence
+identity gives the audit bounds
+
+`c^2 R_point^2/n <= lim_{epsilon->0} Var(R_epsilon)/epsilon <= c R_point R_1`.
+
+This is a first-order Boolean-influence expansion used as a conditional local
+calculation.  It is not claimed as a new noise-stability theorem.
+
+### Proof
+
+The probability of exactly one flipped coordinate `i` is
+`epsilon(1-epsilon)^(n-1)=epsilon+O(epsilon^2)`, while the probability of two
+or more flips is `O(epsilon^2)`.  The all-zero state contributes zero risk.
+Summing the risk over the single-flip states yields the expectation formula.
+For the second moment, the single-flip state `i` contributes
+`epsilon(I_i/q)^2+O(epsilon^2)`, while multi-flip states contribute
+`O(epsilon^2)`.  Subtracting the squared expectation, which is itself
+`O(epsilon^2)`, gives the variance formula.  For odd binary `k`,
+`sum_i I_i=q c R_point`; also `sum_i I_i^2` is bounded below by
+`(sum_i I_i)^2/n` and above by `(max_i I_i)(sum_i I_i)`.  Since
+`max_i I_i=q R_1`, the displayed bounds follow.
+
+## Proposition 10: heterogeneous local concentration bound
 
 Assume odd `k=2m+1`, conditional independence of neighbor labels given their
 features, and `|eta(x)-eta(x')| <= L ||x-x'||` within the neighborhood.  Let

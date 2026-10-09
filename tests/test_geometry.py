@@ -1,10 +1,12 @@
 import numpy as np
 
 from knn_reliability.geometry import (
+    boundary_motion_construction,
     ring_support_construction,
     single_prototype_motion_safe,
     verify_ring_separation,
 )
+from knn_reliability.knn import build_neighbor_cache
 
 
 def test_ring_construction_has_explicit_separation_for_small_k():
@@ -19,3 +21,15 @@ def test_single_motion_certificate_is_strictly_conservative():
         single_prototype_motion_safe(np.array([1, 2, 3, 5])),
         np.array([False, False, True, True]),
     )
+
+
+def test_boundary_motion_construction_exchanges_the_kth_neighbor():
+    construction = boundary_motion_construction()
+    base = build_neighbor_cache(construction.points, construction.query, 5)
+    moved = construction.points.copy()
+    moved[construction.target_index, 0] += construction.motion_radius
+    after = build_neighbor_cache(moved, construction.query, 5)
+    assert construction.target_index in base.indices[0]
+    assert construction.candidate_index not in base.indices[0]
+    assert construction.target_index not in after.indices[0]
+    assert construction.candidate_index in after.indices[0]

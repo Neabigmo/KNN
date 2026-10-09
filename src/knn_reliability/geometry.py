@@ -17,6 +17,19 @@ class RingConstruction:
     epsilon: float
 
 
+@dataclass(frozen=True)
+class BoundaryMotionConstruction:
+    """A query-centered kNN boundary with one controllable neighbor swap."""
+
+    points: np.ndarray
+    query: np.ndarray
+    target_index: int
+    candidate_index: int
+    target_radius: float
+    candidate_radius: float
+    motion_radius: float
+
+
 def single_prototype_motion_safe(top_two_gap: int | np.ndarray) -> np.ndarray:
     """Return the conservative certificate for one moved-and-relabelled point.
 
@@ -30,6 +43,40 @@ def single_prototype_motion_safe(top_two_gap: int | np.ndarray) -> np.ndarray:
 
     gaps = np.asarray(top_two_gap)
     return gaps > 2
+
+
+def boundary_motion_construction(
+    *,
+    target_radius: float = 1.0,
+    candidate_radius: float = 1.01,
+    inner_radius: float = 0.3,
+    motion_radius: float = 0.04,
+) -> BoundaryMotionConstruction:
+    """Build a five-neighbor boundary where outward motion swaps one member.
+
+    Four points lie safely inside the query-centered boundary.  The target is
+    the fifth neighbor and the candidate is just outside it.  Moving the
+    target radially outward by ``motion_radius`` therefore exchanges the
+    target and candidate while leaving the four inner neighbors unchanged.
+    """
+
+    values = np.asarray(
+        [target_radius, candidate_radius, inner_radius, inner_radius, inner_radius, inner_radius],
+        dtype=float,
+    )
+    if not (0 < inner_radius < target_radius < candidate_radius < target_radius + motion_radius):
+        raise ValueError("radii must place the candidate just outside the target boundary")
+    angles = np.asarray([0.0, 0.0, 0.0, np.pi / 2, np.pi, 3.0 * np.pi / 2])
+    points = np.column_stack([values * np.cos(angles), values * np.sin(angles)])
+    return BoundaryMotionConstruction(
+        points=points,
+        query=np.zeros((1, 2), dtype=float),
+        target_index=0,
+        candidate_index=1,
+        target_radius=target_radius,
+        candidate_radius=candidate_radius,
+        motion_radius=motion_radius,
+    )
 
 
 def ring_support_construction(k: int, epsilon: float = 0.01) -> RingConstruction:

@@ -7,11 +7,23 @@ from knn_reliability.probability import (
     batch_risk_moments,
     binary_flip_probability,
     dense_batch_risk_moments,
+    enumerate_shared_flip_moments,
     first_order_risk,
     monte_carlo_batch_risk,
     poisson_binomial_pmf,
     query_overlap_pairs,
 )
+
+
+def test_exact_flip_state_enumeration_matches_first_order_variance_audit():
+    y_train = np.array([0, 0, 0, 1, 0, 0, 0, 0])
+    neighbors = np.array([[0, 1, 3], [0, 2, 3], [1, 2, 3], [0, 1, 2]])
+    epsilon = 0.001
+    expectation, variance = enumerate_shared_flip_moments(
+        y_train, neighbors, epsilon, classes=[0, 1]
+    )
+    np.testing.assert_allclose(expectation, 0.001498501, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(variance / epsilon, 0.75, rtol=0, atol=2e-3)
 
 
 def test_poisson_binomial_matches_small_enumeration():

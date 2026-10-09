@@ -35,6 +35,8 @@ python figures/scripts/build_revision_figures.py
 
 The experiment runner writes audit tables and run metadata under `results/`.  The figure builder reads the processed tables and writes panels under `figures/`.  To select a subset of experiments, pass names such as `--experiments e1 e2 e3 e6`.
 
-The test suite contains 21 regression and exactness checks.  GitHub Actions
+The test suite contains 23 regression and exactness checks, including a
+complete small-state check for the first-order batch-variance expansion.
+GitHub Actions
 runs it on Python 3.10 and 3.12.  `environment.yml` records the environment
 used for the release verification.

@@ -121,6 +121,65 @@ def first_order_risk(
     return float(np.dot(influence, probabilities) / n_queries)
 
 
+def enumerate_shared_flip_moments(
+    y_train: np.ndarray,
+    neighbors: np.ndarray,
+    flip_probability: float,
+    *,
+    classes: Iterable[object] | None = None,
+    tie_priority: Iterable[object] | None = None,
+    max_prototypes: int = 20,
+) -> tuple[float, float]:
+    """Enumerate exact batch-risk moments for independent binary flips.
+
+    This small-state audit enumerates every binary flip vector and is intended
+    for validating the first-order variance expansion, not for production
+    computation.  The production path is ``batch_risk_moments``.
+    """
+
+    y_train = np.asarray(y_train)
+    neighbors = np.asarray(neighbors, dtype=int)
+    probability = float(flip_probability)
+    if y_train.ndim != 1 or len(y_train) == 0:
+        raise ValueError("y_train must be a non-empty one-dimensional array")
+    if neighbors.ndim != 2 or len(neighbors) == 0:
+        raise ValueError("neighbors must be a non-empty two-dimensional array")
+    if len(y_train) > max_prototypes:
+        raise ValueError("state enumeration exceeds max_prototypes")
+    if not 0.0 <= probability <= 1.0:
+        raise ValueError("flip_probability must lie in [0, 1]")
+    if np.any(neighbors < 0) or np.any(neighbors >= len(y_train)):
+        raise ValueError("neighbors contain an invalid training index")
+    labels, _ = counts_from_neighbors(y_train, neighbors, classes=classes)
+    if len(labels) != 2:
+        raise ValueError("enumeration currently supports binary labels")
+    baseline, _, _ = predict_from_neighbors(
+        y_train, neighbors, classes=labels, tie_priority=tie_priority
+    )
+    probability_mass = 0.0
+    first_moment = 0.0
+    second_moment = 0.0
+    for mask in range(1 << len(y_train)):
+        flips = ((mask >> np.arange(len(y_train))) & 1).astype(bool)
+        perturbed = y_train.copy()
+        perturbed[flips] = np.where(
+            perturbed[flips] == labels[0], labels[1], labels[0]
+        )
+        predictions, _, _ = predict_from_neighbors(
+            perturbed, neighbors, classes=labels, tie_priority=tie_priority
+        )
+        risk = float(np.mean(predictions != baseline))
+        mass = probability ** int(flips.sum()) * (1.0 - probability) ** int(
+            len(y_train) - flips.sum()
+        )
+        probability_mass += mass
+        first_moment += mass * risk
+        second_moment += mass * risk * risk
+    if not np.isclose(probability_mass, 1.0, atol=1e-12):
+        raise RuntimeError("flip-state masses do not sum to one")
+    return float(first_moment), float(max(0.0, second_moment - first_moment**2))
+
+
 def _postflip_class_zero_probability(label: object, class_zero: object, probability: float) -> float:
     return (1.0 - probability) if label == class_zero else probability
 

@@ -29,6 +29,7 @@ from knn_reliability.extensions import (  # noqa: E402
     weighted_predict_from_neighbors,
 )
 from knn_reliability.geometry import (  # noqa: E402
+    boundary_motion_construction,
     ring_separation_margin,
     ring_support_construction,
     single_prototype_motion_safe,
@@ -52,6 +53,7 @@ from knn_reliability.probability import (  # noqa: E402
     batch_risk_moments,
     binary_flip_probability,
     dense_batch_risk_moments,
+    enumerate_shared_flip_moments,
     first_order_risk,
     monte_carlo_batch_risk,
     monte_carlo_perfectly_correlated_batch_risk,
@@ -720,6 +722,51 @@ def run_e3() -> None:
                     )
     save_csv(PROCESSED_DIR / "e3_probability_risk.csv", rows)
 
+    # Complete enumeration of a tiny fixed-neighborhood audit.  This is an
+    # independent numerical check of the first-order variance expansion.
+    audit_y = np.array([0, 0, 0, 1, 0, 0, 0, 0])
+    audit_neighbors = np.array([[0, 1, 3], [0, 2, 3], [1, 2, 3], [0, 1, 2]])
+    audit_epsilon = 0.001
+    audit_expectation, audit_variance = enumerate_shared_flip_moments(
+        audit_y,
+        audit_neighbors,
+        audit_epsilon,
+        classes=[0, 1],
+    )
+    audit_influence = compute_influence(
+        audit_y, audit_neighbors, classes=[0, 1], tie_priority=[0, 1]
+    )
+    single_flip_counts = audit_influence.decisive_influence.astype(float)
+    n_queries = len(audit_neighbors)
+    point_risk = float(np.mean(audit_influence.exact_vulnerable))
+    r_one = float(np.max(audit_influence.directional_influence) / n_queries)
+    coefficient = float(np.sum(single_flip_counts**2) / n_queries**2)
+    lower_bound = float((3**2 / 4**2) * point_risk**2)
+    upper_bound = float(3 * point_risk * r_one)
+    save_csv(
+        PROCESSED_DIR / "e3_influence_variance_audit.csv",
+        [
+            {
+                "n_train": len(audit_y),
+                "n_query": n_queries,
+                "k": 3,
+                "epsilon": audit_epsilon,
+                "state_count": 1 << len(audit_y),
+                "single_flip_influence_sum": float(np.sum(single_flip_counts)),
+                "single_flip_influence_square_sum": float(np.sum(single_flip_counts**2)),
+                "point_prv": point_risk,
+                "r_one": r_one,
+                "exact_expectation": audit_expectation,
+                "exact_variance": audit_variance,
+                "variance_over_epsilon": audit_variance / audit_epsilon,
+                "first_order_variance_coefficient": coefficient,
+                "lower_bound": lower_bound,
+                "upper_bound": upper_bound,
+                "bound_holds": bool(lower_bound <= coefficient <= upper_bound),
+            }
+        ],
+    )
+
 
 def run_e4() -> None:
     """Audit boundary probabilities under random-label models only.
@@ -964,49 +1011,73 @@ def run_e6() -> None:
                 "combined_prediction_changed": bool(combined_prediction[0] != combined_base[0]),
             }
         )
-    # A controlled low/mid/high vote-gap perturbation diagnostic.  The
-    # neighborhood geometry and motion radius are held fixed across groups.
+    # A boundary-controlled low/mid/high vote-gap diagnostic.  The target is
+    # initially the fifth neighbor and the candidate is 0.01 farther away, so
+    # the outward motion exercises a real k/k+1 neighbor exchange.  We record
+    # label-only, geometry-only, and joint interventions separately.
     gap_groups = {
-        "low_gap": np.array([0, 0, 0, 1, 1]),
-        "mid_gap": np.array([0, 0, 0, 0, 1]),
-        "high_gap": np.array([0, 0, 0, 0, 0]),
+        # Index 0 is the fifth neighbor, index 1 is the sixth candidate, and
+        # indices 2--5 are the four strictly inner neighbors.  The explicit
+        # six-label vectors make the pre-change vote gaps exactly 1, 3, and 5.
+        "low_gap": np.array([0, 1, 0, 0, 1, 1]),
+        "mid_gap": np.array([0, 1, 0, 0, 0, 1]),
+        "high_gap": np.array([0, 1, 0, 0, 0, 0]),
     }
-    gap_points = np.array([
-        [0.90, 0.00], [0.28, 0.86], [-0.73, 0.53],
-        [-0.73, -0.53], [0.28, -0.86], [2.50, 0.00],
-    ])
-    gap_query = np.zeros((1, 2))
+    boundary = boundary_motion_construction()
+    gap_points = boundary.points
+    gap_query = boundary.query
     gap_rng = np.random.default_rng(20260615)
     for group, group_labels in gap_groups.items():
         base_cache = build_neighbor_cache(gap_points, gap_query, 5)
-        base_labels = np.concatenate([group_labels, np.array([1])])
+        base_labels = group_labels.copy()
         base_prediction, base_counts, _ = predict_from_neighbors(
             base_labels, base_cache.indices, classes=[0, 1]
         )
-        changed = 0
+        fixed_label_changed = 0
+        geometry_changed = 0
+        combined_changed = 0
+        exchanges = 0
         trials = 200
-        moved_labels = np.concatenate([group_labels, np.array([1])])
-        moved_labels[0] = 1
+        moved_labels = base_labels.copy()
+        moved_labels[boundary.target_index] = 1
+        fixed_label_prediction, _, _ = predict_from_neighbors(
+            moved_labels, base_cache.indices, classes=[0, 1]
+        )
         for _ in range(trials):
             moved_points = gap_points.copy()
-            direction = gap_rng.normal(size=2)
-            direction /= max(np.linalg.norm(direction), 1e-12)
-            moved_points[0] += 0.02 * direction
+            angle = gap_rng.uniform(-0.20, 0.20)
+            moved_points[boundary.target_index] += boundary.motion_radius * np.array(
+                [np.cos(angle), np.sin(angle)]
+            )
             moved_cache = build_neighbor_cache(moved_points, gap_query, 5)
-            moved_prediction, _, _ = predict_from_neighbors(
+            geometry_prediction, _, _ = predict_from_neighbors(
+                base_labels, moved_cache.indices, classes=[0, 1]
+            )
+            combined_prediction, _, _ = predict_from_neighbors(
                 moved_labels, moved_cache.indices, classes=[0, 1]
             )
-            changed += int(moved_prediction[0] != base_prediction[0])
+            exchanges += int(
+                not np.array_equal(base_cache.indices[0], moved_cache.indices[0])
+            )
+            fixed_label_changed += int(fixed_label_prediction[0] != base_prediction[0])
+            geometry_changed += int(geometry_prediction[0] != base_prediction[0])
+            combined_changed += int(combined_prediction[0] != base_prediction[0])
         rows.append(
             {
-                "perturbation": "vote_gap_stratified_motion_relabel",
+                "perturbation": "vote_gap_stratified_boundary_motion",
                 "vote_gap_group": group,
                 "pre_change_vote_gap": int(top_two_gap(base_counts)[0]),
                 "baseline_counts": ":".join(map(str, base_counts[0].tolist())),
-                "motion_radius": 0.02,
+                "boundary_gap": boundary.candidate_radius - boundary.target_radius,
+                "motion_radius": boundary.motion_radius,
                 "trials": trials,
-                "prediction_changes": changed,
-                "change_rate": changed / trials,
+                "neighbor_exchange_rate": exchanges / trials,
+                "fixed_label_prediction_changed": bool(fixed_label_prediction[0] != base_prediction[0]),
+                "geometry_prediction_changed_rate": geometry_changed / trials,
+                "combined_prediction_changed_rate": combined_changed / trials,
+                "fixed_label_change_rate": fixed_label_changed / trials,
+                "prediction_changes": combined_changed,
+                "change_rate": combined_changed / trials,
                 "certificate_applicable": bool(single_prototype_motion_safe(int(top_two_gap(base_counts)[0]))),
             }
         )
@@ -1488,13 +1559,13 @@ def run_e9() -> None:
             lambda: batch_risk_moments(
                 y_train, cache.indices, probabilities, classes=[0, 1]
             ),
-            repeats=1 if q >= 320 else 5,
+            repeats=5,
         )
         dense, dense_timing = timed(
             lambda: dense_batch_risk_moments(
                 y_train, cache.indices, probabilities, classes=[0, 1]
             ),
-            repeats=1 if q >= 320 else 3,
+            repeats=3,
         )
         if not np.allclose(
             [overlap.expectation, overlap.variance],
@@ -1511,7 +1582,7 @@ def run_e9() -> None:
                 classes=[0, 1],
                 seed=20261009 + q,
             ),
-            repeats=1 if q >= 320 else 5,
+            repeats=5,
         )
         common = {
             "benchmark_family": "shared_probability",
