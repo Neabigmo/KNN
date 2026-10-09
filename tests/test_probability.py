@@ -9,6 +9,7 @@ from knn_reliability.probability import (
     dense_batch_risk_moments,
     enumerate_shared_flip_moments,
     first_order_risk,
+    first_order_variance_bounds,
     monte_carlo_batch_risk,
     poisson_binomial_pmf,
     query_overlap_pairs,
@@ -64,6 +65,23 @@ def test_binary_probability_matches_shared_flip_enumeration():
 
 def test_first_order_risk_is_directional_derivative():
     assert first_order_risk([2, 1], [0.01, 0.02], 4) == 0.01
+
+
+def test_first_order_variance_bounds_use_dynamic_pivotal_factor():
+    lower, upper = first_order_variance_bounds(0.5, 0.125, n_train=8, k=3)
+    np.testing.assert_allclose((lower, upper), (0.125, 0.125))
+
+    audit_y = np.array([0, 0, 0, 1, 0, 0, 0, 0])
+    audit_neighbors = np.array([[0, 1, 3], [0, 2, 3], [1, 2, 3], [0, 1, 2]])
+    from knn_reliability.influence import compute_influence
+
+    influence = compute_influence(audit_y, audit_neighbors, classes=[0, 1], tie_priority=[0, 1])
+    point_risk = float(np.mean(influence.exact_vulnerable))
+    r_one = float(np.max(influence.directional_influence) / len(audit_neighbors))
+    coefficient = float(np.sum(influence.decisive_influence.astype(float) ** 2) / len(audit_neighbors) ** 2)
+    lower, upper = first_order_variance_bounds(point_risk, r_one, n_train=8, k=3)
+    np.testing.assert_allclose((lower, upper, coefficient), (0.28125, 0.75, 0.75), atol=1e-12)
+    np.testing.assert_allclose(coefficient, upper, atol=1e-12)
 
 
 def test_batch_moments_keep_overlap_covariance():

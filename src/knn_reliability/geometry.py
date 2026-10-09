@@ -52,20 +52,25 @@ def boundary_motion_construction(
     inner_radius: float = 0.3,
     motion_radius: float = 0.04,
 ) -> BoundaryMotionConstruction:
-    """Build a five-neighbor boundary where outward motion swaps one member.
+    """Build a five-neighbor boundary with a controllable target/candidate pair.
 
-    Four points lie safely inside the query-centered boundary.  The target is
-    the fifth neighbor and the candidate is just outside it.  Moving the
-    target radially outward by ``motion_radius`` therefore exchanges the
-    target and candidate while leaving the four inner neighbors unchanged.
+    Four points lie safely inside the query-centered boundary.  The target and
+    candidate are collinear with the query and can be placed on either side of
+    the fifth-neighbor boundary.  Callers can therefore test entering,
+    leaving, or remaining inside the neighborhood without changing the other
+    four points.
     """
 
     values = np.asarray(
         [target_radius, candidate_radius, inner_radius, inner_radius, inner_radius, inner_radius],
         dtype=float,
     )
-    if not (0 < inner_radius < target_radius < candidate_radius < target_radius + motion_radius):
-        raise ValueError("radii must place the candidate just outside the target boundary")
+    if not (
+        0 < inner_radius < min(target_radius, candidate_radius)
+        and target_radius != candidate_radius
+        and motion_radius > 0
+    ):
+        raise ValueError("radii must define a distinct, movable target/candidate pair")
     angles = np.asarray([0.0, 0.0, 0.0, np.pi / 2, np.pi, 3.0 * np.pi / 2])
     points = np.column_stack([values * np.cos(angles), values * np.sin(angles)])
     return BoundaryMotionConstruction(

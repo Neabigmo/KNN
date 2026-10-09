@@ -55,6 +55,7 @@ from knn_reliability.probability import (  # noqa: E402
     dense_batch_risk_moments,
     enumerate_shared_flip_moments,
     first_order_risk,
+    first_order_variance_bounds,
     monte_carlo_batch_risk,
     monte_carlo_perfectly_correlated_batch_risk,
     odd_k_boundary_probability,
@@ -622,6 +623,7 @@ def run_e2() -> None:
 
 def run_e3() -> None:
     rows: list[dict[str, object]] = []
+    h2_rows: list[dict[str, object]] = []
     binary_datasets = ("breast_cancer_wisconsin", "digits_0_vs_8", "imbalanced_binary", "noisy_binary")
     for dataset in binary_datasets:
         x, y = load_dataset(dataset, 0, max_samples=800)
@@ -636,6 +638,44 @@ def run_e3() -> None:
                 query_count = min(requested_queries, len(x_test))
                 cache = build_neighbor_cache(x_train, x_test[:query_count], k)
                 influence = compute_influence(y_train, cache.indices, classes=labels)
+                if k % 2 == 1:
+                    pivotal_count = (k + 1) / 2.0
+                    point_risk = float(np.mean(influence.exact_vulnerable))
+                    influence_counts = influence.decisive_influence.astype(float)
+                    total_influence = float(np.sum(influence_counts))
+                    h2 = (
+                        float(np.sum(influence_counts**2) / total_influence**2)
+                        if total_influence > 0.0
+                        else 0.0
+                    )
+                    coefficient = float(np.sum(influence_counts**2) / len(cache.indices) ** 2)
+                    predicted_coefficient = float((pivotal_count * point_risk) ** 2 * h2)
+                    lower_bound, upper_bound = first_order_variance_bounds(
+                        point_risk,
+                        float(np.max(influence.directional_influence) / len(cache.indices)),
+                        n_train=len(y_train),
+                        k=k,
+                    )
+                    h2_rows.append(
+                        {
+                            "dataset": dataset,
+                            "requested_queries": requested_queries,
+                            "n_train": len(y_train),
+                            "n_query": len(cache.indices),
+                            "k": k,
+                            "point_risk": point_risk,
+                            "pivotal_count": pivotal_count,
+                            "influence_sum": total_influence,
+                            "influence_square_concentration_h2": h2,
+                            "variance_coefficient_exact": coefficient,
+                            "variance_coefficient_from_h2": predicted_coefficient,
+                            "identity_absolute_error": abs(coefficient - predicted_coefficient),
+                            "lower_bound": lower_bound,
+                            "upper_bound": upper_bound,
+                            "lower_bound_holds": bool(lower_bound <= coefficient + 1e-12),
+                            "upper_bound_holds": bool(coefficient <= upper_bound + 1e-12),
+                        }
+                    )
                 membership = np.bincount(cache.indices.ravel(), minlength=len(y_train))
                 overlap_values = []
                 for left in range(len(cache.indices)):
@@ -721,6 +761,7 @@ def run_e3() -> None:
                         }
                     )
     save_csv(PROCESSED_DIR / "e3_probability_risk.csv", rows)
+    save_csv(PROCESSED_DIR / "e3_h2_variance_validation.csv", h2_rows)
 
     # Complete enumeration of a tiny fixed-neighborhood audit.  This is an
     # independent numerical check of the first-order variance expansion.
@@ -741,8 +782,12 @@ def run_e3() -> None:
     point_risk = float(np.mean(audit_influence.exact_vulnerable))
     r_one = float(np.max(audit_influence.directional_influence) / n_queries)
     coefficient = float(np.sum(single_flip_counts**2) / n_queries**2)
-    lower_bound = float((3**2 / 4**2) * point_risk**2)
-    upper_bound = float(3 * point_risk * r_one)
+    lower_bound, upper_bound = first_order_variance_bounds(
+        point_risk,
+        r_one,
+        n_train=len(audit_y),
+        k=3,
+    )
     save_csv(
         PROCESSED_DIR / "e3_influence_variance_audit.csv",
         [
@@ -1011,76 +1056,132 @@ def run_e6() -> None:
                 "combined_prediction_changed": bool(combined_prediction[0] != combined_base[0]),
             }
         )
-    # A boundary-controlled low/mid/high vote-gap diagnostic.  The target is
-    # initially the fifth neighbor and the candidate is 0.01 farther away, so
-    # the outward motion exercises a real k/k+1 neighbor exchange.  We record
-    # label-only, geometry-only, and joint interventions separately.
+    # A boundary-controlled low/mid/high vote-gap diagnostic.  Each scenario
+    # records label-only, geometry-only, and joint interventions separately.
+    # The target is deliberately placed so that one condition enters the
+    # neighborhood, one exits it, and one remains inside without exchange.
     gap_groups = {
-        # Index 0 is the fifth neighbor, index 1 is the sixth candidate, and
-        # indices 2--5 are the four strictly inner neighbors.  The explicit
-        # six-label vectors make the pre-change vote gaps exactly 1, 3, and 5.
+        # Indices 0 and 1 are the target/candidate pair; indices 2--5 are the
+        # four strictly inner neighbors.  These label vectors give pre-change
+        # vote gaps exactly 1, 3, and 5 whenever the target is inside.
         "low_gap": np.array([0, 1, 0, 0, 1, 1]),
         "mid_gap": np.array([0, 1, 0, 0, 0, 1]),
         "high_gap": np.array([0, 1, 0, 0, 0, 0]),
     }
-    boundary = boundary_motion_construction()
-    gap_points = boundary.points
-    gap_query = boundary.query
+    outside_gap_groups = {
+        "low_gap": np.array([0, 1, 0, 0, 1, 1]),
+        "mid_gap": np.array([0, 0, 0, 0, 0, 1]),
+        "high_gap": np.array([0, 0, 0, 0, 0, 0]),
+    }
     gap_rng = np.random.default_rng(20260615)
-    for group, group_labels in gap_groups.items():
-        base_cache = build_neighbor_cache(gap_points, gap_query, 5)
-        base_labels = group_labels.copy()
-        base_prediction, base_counts, _ = predict_from_neighbors(
-            base_labels, base_cache.indices, classes=[0, 1]
-        )
-        fixed_label_changed = 0
-        geometry_changed = 0
-        combined_changed = 0
-        exchanges = 0
-        trials = 200
-        moved_labels = base_labels.copy()
-        moved_labels[boundary.target_index] = 1
-        fixed_label_prediction, _, _ = predict_from_neighbors(
-            moved_labels, base_cache.indices, classes=[0, 1]
-        )
-        for _ in range(trials):
-            moved_points = gap_points.copy()
-            angle = gap_rng.uniform(-0.20, 0.20)
-            moved_points[boundary.target_index] += boundary.motion_radius * np.array(
-                [np.cos(angle), np.sin(angle)]
+    motion_scenarios = {
+        "enters": {
+            "target_radius": 1.04,
+            "candidate_radius": 1.00,
+            "motion_radius": 0.06,
+            "motion_sign": -1.0,
+        },
+        "stays_inside": {
+            "target_radius": 0.96,
+            "candidate_radius": 1.04,
+            "motion_radius": 0.03,
+            "motion_sign": 1.0,
+        },
+        "exits": {
+            "target_radius": 1.00,
+            "candidate_radius": 1.04,
+            "motion_radius": 0.06,
+            "motion_sign": 1.0,
+        },
+    }
+    for scenario, parameters in motion_scenarios.items():
+        boundary = boundary_motion_construction(**{
+            key: parameters[key]
+            for key in ("target_radius", "candidate_radius", "motion_radius")
+        })
+        gap_points = boundary.points
+        gap_query = boundary.query
+        label_groups = outside_gap_groups if scenario == "enters" else gap_groups
+        for group, group_labels in label_groups.items():
+            base_cache = build_neighbor_cache(gap_points, gap_query, 5)
+            base_labels = group_labels.copy()
+            base_prediction, base_counts, _ = predict_from_neighbors(
+                base_labels, base_cache.indices, classes=[0, 1]
             )
-            moved_cache = build_neighbor_cache(moved_points, gap_query, 5)
-            geometry_prediction, _, _ = predict_from_neighbors(
-                base_labels, moved_cache.indices, classes=[0, 1]
+            moved_labels = base_labels.copy()
+            moved_labels[boundary.target_index] = 1
+            fixed_label_prediction, _, _ = predict_from_neighbors(
+                moved_labels, base_cache.indices, classes=[0, 1]
             )
-            combined_prediction, _, _ = predict_from_neighbors(
-                moved_labels, moved_cache.indices, classes=[0, 1]
+            fixed_changed = int(fixed_label_prediction[0] != base_prediction[0])
+            geometry_changed = 0
+            combined_changed = 0
+            exchanges = 0
+            target_inside = 0
+            label_effect = 0
+            inside_trials = 0
+            outside_trials = 0
+            label_effect_inside = 0
+            label_effect_outside = 0
+            joint_minus_sum = 0
+            trials = 200
+            for _ in range(trials):
+                moved_points = gap_points.copy()
+                angle = gap_rng.uniform(-0.20, 0.20)
+                direction = np.array([np.cos(angle), np.sin(angle)])
+                moved_points[boundary.target_index] += (
+                    parameters["motion_sign"] * boundary.motion_radius * direction
+                )
+                moved_cache = build_neighbor_cache(moved_points, gap_query, 5)
+                geometry_prediction, _, _ = predict_from_neighbors(
+                    base_labels, moved_cache.indices, classes=[0, 1]
+                )
+                combined_prediction, _, _ = predict_from_neighbors(
+                    moved_labels, moved_cache.indices, classes=[0, 1]
+                )
+                geometry_change = int(geometry_prediction[0] != base_prediction[0])
+                combined_change = int(combined_prediction[0] != base_prediction[0])
+                is_inside = boundary.target_index in moved_cache.indices[0]
+                exchanges += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
+                target_inside += int(is_inside)
+                geometry_changed += geometry_change
+                combined_changed += combined_change
+                label_effect_now = int(combined_prediction[0] != geometry_prediction[0])
+                label_effect += label_effect_now
+                joint_minus_sum += combined_change - fixed_changed - geometry_change
+                if is_inside:
+                    inside_trials += 1
+                    label_effect_inside += label_effect_now
+                else:
+                    outside_trials += 1
+                    label_effect_outside += label_effect_now
+            rows.append(
+                {
+                    "perturbation": "vote_gap_stratified_boundary_motion",
+                    "vote_gap_group": group,
+                    "motion_condition": scenario,
+                    "pre_change_vote_gap": int(top_two_gap(base_counts)[0]),
+                    "baseline_counts": ":".join(map(str, base_counts[0].tolist())),
+                    "target_initially_in_neighbor": bool(boundary.target_index in base_cache.indices[0]),
+                    "boundary_gap": abs(boundary.candidate_radius - boundary.target_radius),
+                    "motion_radius": boundary.motion_radius,
+                    "motion_sign": parameters["motion_sign"],
+                    "trials": trials,
+                    "neighbor_exchange_rate": exchanges / trials,
+                    "target_in_neighbor_rate": target_inside / trials,
+                    "fixed_label_prediction_changed": bool(fixed_changed),
+                    "geometry_prediction_changed_rate": geometry_changed / trials,
+                    "combined_prediction_changed_rate": combined_changed / trials,
+                    "fixed_label_change_rate": fixed_changed,
+                    "label_effect_rate": label_effect / trials,
+                    "label_effect_rate_inside": label_effect_inside / inside_trials if inside_trials else 0.0,
+                    "label_effect_rate_outside": label_effect_outside / outside_trials if outside_trials else 0.0,
+                    "joint_minus_sum_single_effects": joint_minus_sum / trials,
+                    "prediction_changes": combined_changed,
+                    "change_rate": combined_changed / trials,
+                    "certificate_applicable": bool(single_prototype_motion_safe(int(top_two_gap(base_counts)[0]))),
+                }
             )
-            exchanges += int(
-                not np.array_equal(base_cache.indices[0], moved_cache.indices[0])
-            )
-            fixed_label_changed += int(fixed_label_prediction[0] != base_prediction[0])
-            geometry_changed += int(geometry_prediction[0] != base_prediction[0])
-            combined_changed += int(combined_prediction[0] != base_prediction[0])
-        rows.append(
-            {
-                "perturbation": "vote_gap_stratified_boundary_motion",
-                "vote_gap_group": group,
-                "pre_change_vote_gap": int(top_two_gap(base_counts)[0]),
-                "baseline_counts": ":".join(map(str, base_counts[0].tolist())),
-                "boundary_gap": boundary.candidate_radius - boundary.target_radius,
-                "motion_radius": boundary.motion_radius,
-                "trials": trials,
-                "neighbor_exchange_rate": exchanges / trials,
-                "fixed_label_prediction_changed": bool(fixed_label_prediction[0] != base_prediction[0]),
-                "geometry_prediction_changed_rate": geometry_changed / trials,
-                "combined_prediction_changed_rate": combined_changed / trials,
-                "fixed_label_change_rate": fixed_label_changed / trials,
-                "prediction_changes": combined_changed,
-                "change_rate": combined_changed / trials,
-                "certificate_applicable": bool(single_prototype_motion_safe(int(top_two_gap(base_counts)[0]))),
-            }
-        )
 
     # Forty thousand random checks of the conservative G>2 certificate.
     rng = np.random.default_rng(20260614)

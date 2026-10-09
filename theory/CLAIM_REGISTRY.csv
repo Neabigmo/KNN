@@ -12,3 +12,4 @@ C10,Central-ball two-dimensional ring/support construction,epsilon < 2 sin(pi/k)
 C11,Empirical PRV is monotone in k,No general assumptions,THEOREM_PROOFS.md,unsupported empirical claim,WITHDRAWN,not applicable,not asserted,none,E4
 C12,First-order risk approximates finite-p risk with a universal pairwise bound,No additional structural assumptions,THEOREM_PROOFS.md,unverified candidate,WITHDRAWN,not applicable,not asserted,none,E3
 C13,Independent-flip batch variance has a first-order single-flip influence coefficient,Fixed neighborhoods; binary flips; epsilon tends to zero,THEOREM_PROOFS.md,first-order Boolean expansion,PROVED,passed,passed,probability method,E3
+C14,First-order variance coefficient equals squared pivotal-risk times H2 influence concentration,Binary odd-k; independent flips; R_point > 0; epsilon tends to zero,THEOREM_PROOFS.md,algebraic reparameterization of C13,PROVED,passed,passed,probability method,E3

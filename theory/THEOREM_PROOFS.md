@@ -222,6 +222,18 @@ identity gives the audit bounds
 This is a first-order Boolean-influence expansion used as a conditional local
 calculation.  It is not claimed as a new noise-stability theorem.
 
+When `R_point > 0`, define the quadratic influence concentration
+`H_2 = sum_i (I_i / sum_j I_j)^2`.  The pivotal incidence identity then gives
+
+`lim_{epsilon->0} Var(R_epsilon)/epsilon = (c R_point)^2 H_2`.
+
+Thus two fixed-neighborhood audits with the same query-level vulnerability can
+have different leading batch variance when their decisive incidences are
+distributed differently across prototypes.  This is a reparameterization of
+the first-order Boolean expansion, not an additional noise-stability theorem;
+the E3 validation table checks it on multiple binary datasets and fixed
+neighborhoods.
+
 ### Proof
 
 The probability of exactly one flipped coordinate `i` is

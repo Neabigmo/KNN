@@ -104,7 +104,6 @@ def fig1_framework() -> None:
         )
     for index, (x, y) in enumerate(points, start=1):
         axes[0].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=9)
-    axes[0].set_title(f"All training-point LOO predictions correct ({loo_correct}/{len(points)})", fontsize=10)
     axes[0].text(
         0.5, 0.05,
         f"independent query votes {base_counts[0].tolist()} $\\rightarrow$ class {int(base_prediction[0])}",
@@ -125,7 +124,6 @@ def fig1_framework() -> None:
         axes[1].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=9)
     axes[1].annotate("$z_3$: 0 $\\to$ 1", xy=points[2], xytext=(-1.48, 0.34),
                      arrowprops={"arrowstyle": "->", "color": "#984ea3"}, color="#984ea3", fontsize=9)
-    axes[1].set_title("One retained-label replacement flips the query", fontsize=10)
     axes[1].text(
         0.5, 0.05,
         f"votes {base_counts[0].tolist()} $\\rightarrow$ {relabel_counts[0].tolist()}; "
@@ -217,6 +215,18 @@ def fig2_theory() -> None:
                      arrowprops={"arrowstyle": "->", "color": "#444"})
     axes[2].set_xlim(-1.35, 1.35)
     axes[2].set_ylim(-1.45, 1.25)
+    inset = axes[2].inset_axes([0.60, 0.08, 0.36, 0.36])
+    inset.scatter([1.0], [0.0], s=30, color="#222222", zorder=4)
+    for t in range(1, k + 1):
+        radius = 1 + 0.01 * t / k
+        inset.scatter([radius], [0.0], marker=".", s=26, color="#377eb8", zorder=3)
+    inset.set_xlim(0.997, 1.012)
+    inset.set_ylim(-0.004, 0.004)
+    inset.set_xticks([1.000, 1.005, 1.010])
+    inset.set_yticks([])
+    inset.tick_params(axis="x", labelsize=5, pad=1)
+    for spine in inset.spines.values():
+        spine.set_color("#777777")
     write_panel("fig2_theory_panels.csv", [
         {"panel": "a", "n": len(e1), "exact_reference": "zero mismatches", "band_false_negatives": "zero"},
         {"panel": "b", "rows": len(e4), "model": "random training labels"},
@@ -348,16 +358,35 @@ def fig6_operations() -> None:
     fig, axes = plt.subplots(2, 3, figsize=(11.4, 6.3))
     axes = axes.ravel()
     gap_order = ["low_gap", "mid_gap", "high_gap"]
-    boundary_by_gap = {row["vote_gap_group"]: row for row in boundary}
-    gaps = [int(boundary_by_gap[group]["pre_change_vote_gap"]) for group in gap_order]
-    axes[0].plot(gaps, [float(boundary_by_gap[group]["fixed_label_change_rate"]) for group in gap_order], "o-", label="fixed relabel")
-    axes[0].plot(gaps, [float(boundary_by_gap[group]["geometry_prediction_changed_rate"]) for group in gap_order], "^-", label="geometry only")
-    axes[0].plot(gaps, [float(boundary_by_gap[group]["combined_prediction_changed_rate"]) for group in gap_order], "x-", label="combined")
-    axes[0].set(xlabel="pre-change top-two vote gap", ylabel="prediction-change rate")
-    axes[0].set_xticks(gaps, ["low\n(1)", "mid\n(3)", "high\n(5)"])
-    axes[0].set_ylim(-0.05, 1.05)
+    condition_order = ["enters", "stays_inside", "exits"]
+    boundary_by_key = {
+        (row["motion_condition"], row["vote_gap_group"]): row for row in boundary
+    }
+    x = np.arange(len(condition_order) * len(gap_order))
+    width = 0.19
+    metrics = [
+        ("label_effect_rate", "label effect", "#377eb8"),
+        ("geometry_prediction_changed_rate", "geometry", "#4daf4a"),
+        ("combined_prediction_changed_rate", "joint", "#d95f02"),
+        ("joint_minus_sum_single_effects", "interaction", "#984ea3"),
+    ]
+    for offset, (field, label, color) in enumerate(metrics):
+        values = [
+            float(boundary_by_key[(condition, group)][field])
+            for condition in condition_order
+            for group in gap_order
+        ]
+        axes[0].bar(x + (offset - 1.5) * width, values, width=width, label=label, color=color)
+    axes[0].set(xlabel="motion condition (E enter, S stay, X exit) and pre-change gap", ylabel="effect rate / difference")
+    condition_labels = {"enters": "E", "stays_inside": "S", "exits": "X"}
+    axes[0].set_xticks(x, [
+        f"{condition_labels[condition]}-{group.split('_')[0][0]}"
+        for condition in condition_order for group in gap_order
+    ], fontsize=6.5)
+    axes[0].axhline(0.0, color="#555555", lw=0.7)
+    axes[0].set_ylim(-1.05, 1.05)
     panel_label(axes[0], "a")
-    axes[0].legend(frameon=False, fontsize=7)
+    axes[0].legend(frameon=False, fontsize=6.5, ncol=2)
     for case in sorted({r["case"] for r in weighted}):
         subset = [r for r in weighted if r["case"] == case]
         axes[1].plot([float(r["power"]) for r in subset], [float(r["weighted_margin"]) for r in subset], "o-", label=case.replace("_", " "))

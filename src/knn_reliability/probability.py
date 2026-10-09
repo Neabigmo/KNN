@@ -121,6 +121,38 @@ def first_order_risk(
     return float(np.dot(influence, probabilities) / n_queries)
 
 
+def first_order_variance_bounds(
+    point_risk: float,
+    r_one: float,
+    n_train: int,
+    k: int,
+) -> tuple[float, float]:
+    """Return the odd-binary first-order variance bounds.
+
+    For ``c=(k+1)/2``, the pivotal-incidence identity gives
+    ``c**2 * point_risk**2 / n_train`` as the lower bound and
+    ``c * point_risk * r_one`` as the upper bound.  The result is an
+    asymptotic coefficient for independent small-probability flips, not a
+    finite-probability variance bound.
+    """
+
+    point_risk = float(point_risk)
+    r_one = float(r_one)
+    n_train = int(n_train)
+    k = int(k)
+    if n_train <= 0:
+        raise ValueError("n_train must be positive")
+    if k <= 0 or k % 2 == 0:
+        raise ValueError("k must be a positive odd integer")
+    if point_risk < 0.0 or r_one < 0.0:
+        raise ValueError("risks must be non-negative")
+    c = (k + 1) / 2.0
+    return (
+        float((c**2 / n_train) * point_risk**2),
+        float(c * point_risk * r_one),
+    )
+
+
 def enumerate_shared_flip_moments(
     y_train: np.ndarray,
     neighbors: np.ndarray,
