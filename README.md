@@ -2,7 +2,7 @@
 
 This repository provides the reproducible implementation for **Auditing Prototype Replacement Vulnerability in kNN Classification: Exact Influence, Probabilistic Stability, and Label Review**.
 
-The central analysis distinguishes deleted-point leave-one-out recovery error from retained-prototype relabeling vulnerability.  It implements exact directional influence, point-level vulnerability, vote-margin diagnostics, probabilistic stability under label flips, query-neighborhood overlap-graph variance, and controlled small-motion checks.
+The central analysis distinguishes deleted-point leave-one-out recovery error from retained-prototype relabeling vulnerability.  It implements exact directional influence, point-level vulnerability, vote-margin diagnostics, probabilistic stability under label flips, query-neighborhood overlap-graph variance, finite-noise variance validation, and geometry-change probability curves.
 
 ## Repository contents
 
@@ -34,6 +34,8 @@ python figures/scripts/build_revision_figures.py
 ```
 
 The experiment runner writes audit tables and run metadata under `results/`.  The figure builder reads the processed tables and writes panels under `figures/`.  To select a subset of experiments, pass names such as `--experiments e1 e2 e3 e6`.
+
+E0 reports both the same-split implementation audit and the historical comparison status.  To reproduce the historical join, set `KNN_BASELINE_TABLE_DIR` to a directory containing `paa_multiclass_benchmark.csv` before running E0.  The runner records the resulting status in `results/processed/e0_reproduction_status.json` and emits a visible warning when that input is unavailable.  E3 includes exact finite-noise checks at five flip probabilities; E6 includes the controlled enter/stay/exit audit and the random-angle displacement curve.
 
 The test suite contains 25 regression and exactness checks, including a
 complete small-state check for the first-order batch-variance expansion.

@@ -224,7 +224,7 @@ def fig2_theory() -> None:
     inset.set_ylim(-0.004, 0.004)
     inset.set_xticks([1.000, 1.005, 1.010])
     inset.set_yticks([])
-    inset.tick_params(axis="x", labelsize=5, pad=1)
+    inset.tick_params(axis="x", labelsize=8, pad=2, length=2)
     for spine in inset.spines.values():
         spine.set_color("#777777")
     write_panel("fig2_theory_panels.csv", [
@@ -354,39 +354,38 @@ def fig6_operations() -> None:
     ties = read_csv("e7_tie_weight_imbalance.csv")
     geometry = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "relabel_plus_radial_displacement"]
     boundary = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "vote_gap_stratified_boundary_motion"]
+    curve = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "motion_probability_curve"]
     weighted = [r for r in ties if r.get("policy") == "weighted_vote"]
     fig, axes = plt.subplots(2, 3, figsize=(11.4, 6.3))
     axes = axes.ravel()
-    gap_order = ["low_gap", "mid_gap", "high_gap"]
-    condition_order = ["enters", "stays_inside", "exits"]
-    boundary_by_key = {
-        (row["motion_condition"], row["vote_gap_group"]): row for row in boundary
-    }
-    x = np.arange(len(condition_order) * len(gap_order))
-    width = 0.19
-    metrics = [
-        ("label_effect_rate", "label effect", "#377eb8"),
-        ("geometry_prediction_changed_rate", "geometry", "#4daf4a"),
-        ("combined_prediction_changed_rate", "joint", "#d95f02"),
-        ("joint_minus_sum_single_effects", "interaction", "#984ea3"),
-    ]
-    for offset, (field, label, color) in enumerate(metrics):
-        values = [
-            float(boundary_by_key[(condition, group)][field])
-            for condition in condition_order
-            for group in gap_order
-        ]
-        axes[0].bar(x + (offset - 1.5) * width, values, width=width, label=label, color=color)
-    axes[0].set(xlabel="motion condition (E enter, S stay, X exit) and pre-change gap", ylabel="effect rate / difference")
-    condition_labels = {"enters": "E", "stays_inside": "S", "exits": "X"}
-    axes[0].set_xticks(x, [
-        f"{condition_labels[condition]}-{group.split('_')[0][0]}"
-        for condition in condition_order for group in gap_order
-    ], fontsize=6.5)
-    axes[0].axhline(0.0, color="#555555", lw=0.7)
-    axes[0].set_ylim(-1.05, 1.05)
+    if curve:
+        gap_colors = plt.get_cmap("viridis")(np.linspace(0.08, 0.92, len({r["boundary_gap"] for r in curve})))
+        for color, boundary_gap in zip(gap_colors, sorted({r["boundary_gap"] for r in curve}, key=float)):
+            subset = sorted(
+                [r for r in curve if r["boundary_gap"] == boundary_gap],
+                key=lambda row: float(row["delta"]),
+            )
+            axes[0].plot(
+                [float(r["delta"]) for r in subset],
+                [float(r["geometry_prediction_changed_rate"]) for r in subset],
+                "o-", color=color, ms=3, lw=1.1, label=f"gap={float(boundary_gap):g}",
+            )
+            axes[0].plot(
+                [float(r["delta"]) for r in subset],
+                [float(r["target_in_neighbor_rate"]) for r in subset],
+                "--", color=color, alpha=0.55, lw=0.9,
+            )
+        axes[0].text(
+            0.98, 0.04, "solid: prediction change\ndashed: target enters",
+            transform=axes[0].transAxes, ha="right", va="bottom", fontsize=6.5,
+        )
+        axes[0].set(xlabel="displacement radius $\\delta$", ylabel="probability")
+        axes[0].set_ylim(-0.04, 1.04)
+        axes[0].legend(frameon=False, fontsize=6.5, ncol=2, loc="upper left")
+    else:
+        axes[0].text(0.5, 0.5, "curve unavailable", ha="center", va="center")
+        axes[0].set_axis_off()
     panel_label(axes[0], "a")
-    axes[0].legend(frameon=False, fontsize=6.5, ncol=2)
     for case in sorted({r["case"] for r in weighted}):
         subset = [r for r in weighted if r["case"] == case]
         axes[1].plot([float(r["power"]) for r in subset], [float(r["weighted_margin"]) for r in subset], "o-", label=case.replace("_", " "))
@@ -440,6 +439,7 @@ def fig6_operations() -> None:
     axes[5].set_axis_off()
     write_panel("fig6_operations_panels.csv", [
         *[{"panel": "a", **r} for r in boundary],
+        *[{"panel": "a", **r} for r in curve],
         *[{"panel": "a", **r} for r in geometry],
         *[{"panel": "b", **r} for r in weighted],
         *[{"panel": "c", **r} for r in runtime],

@@ -339,6 +339,7 @@ def run_e0() -> None:
                 }
             )
         save_csv(PROCESSED_DIR / "e0_historical_comparison.csv", historical_rows)
+    historical_input_available = revision_table.exists() and legacy_table.exists()
     if same_split_rows:
         lines.extend(
             [
@@ -357,6 +358,18 @@ def run_e0() -> None:
                 "split-call order, these rows are descriptive and not paired evidence.",
             ]
         )
+    if not historical_input_available:
+        lines.extend(
+            [
+                "",
+                "| Historical comparison | 0 | INCOMPLETE: external `paa_multiclass_benchmark.csv` is required |",
+                "The same-split implementation audit remains available, but the historical join is not reproduced until `KNN_BASELINE_TABLE_DIR` points to the archived baseline table directory.",
+            ]
+        )
+        print(
+            "WARNING: E0 historical comparison is INCOMPLETE; set "
+            "KNN_BASELINE_TABLE_DIR to a directory containing paa_multiclass_benchmark.csv."
+        )
     lines.extend(
         [
             "",
@@ -372,6 +385,19 @@ def run_e0() -> None:
         ]
     )
     (PROCESSED_DIR / "LEGACY_REPRODUCTION_AUDIT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (PROCESSED_DIR / "e0_reproduction_status.json").write_text(
+        json.dumps(
+            {
+                "same_split_audit": "complete" if same_split_rows else "incomplete",
+                "historical_comparison": "complete" if historical_input_available else "incomplete",
+                "historical_input": "paa_multiclass_benchmark.csv",
+                "baseline_input_dir_env": "KNN_BASELINE_TABLE_DIR",
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def compositions(total: int, parts: int):
@@ -760,6 +786,97 @@ def run_e3() -> None:
                             "exact_within_variance_bound": bool(moments.variance <= variance_bound + 1e-12),
                         }
                     )
+    finite_candidates: list[dict[str, object]] = []
+    finite_datasets = (
+        "breast_cancer_wisconsin",
+        "digits_0_vs_8",
+        "imbalanced_binary",
+        "noisy_binary",
+    )
+    for dataset in finite_datasets:
+        x, y = load_dataset(dataset, 0, max_samples=600)
+        x_train, y_train, _, _, x_test, _ = split_and_scale(x, y, 0)
+        labels = np.unique(y_train)
+        if len(labels) != 2:
+            continue
+        for k in (3, 5):
+            query_count = min(16, len(x_test))
+            cache = build_neighbor_cache(x_train, x_test[:query_count], k)
+            influence = compute_influence(y_train, cache.indices, classes=labels)
+            influence_counts = influence.decisive_influence.astype(float)
+            total_influence = float(np.sum(influence_counts))
+            if total_influence <= 0.0:
+                continue
+            finite_candidates.append(
+                {
+                    "dataset": dataset,
+                    "k": k,
+                    "seed": 0,
+                    "n_train": len(y_train),
+                    "n_query": len(cache.indices),
+                    "neighbors": cache.indices,
+                    "y_train": y_train,
+                    "labels": labels,
+                    "point_risk": float(np.mean(influence.exact_vulnerable)),
+                    "H2": float(np.sum(influence_counts**2) / total_influence**2),
+                    "variance_coefficient": float(np.sum(influence_counts**2) / len(cache.indices) ** 2),
+                }
+            )
+    pair_options = []
+    for left_index, left in enumerate(finite_candidates):
+        for right in finite_candidates[left_index + 1:]:
+            point_difference = abs(float(left["point_risk"]) - float(right["point_risk"]))
+            h2_difference = abs(float(left["H2"]) - float(right["H2"]))
+            if point_difference <= 0.10 and h2_difference >= 0.02:
+                pair_options.append((point_difference, -h2_difference, left, right))
+    pair_options.sort(key=lambda item: (item[0], item[1]))
+    matched_pair = pair_options[0] if pair_options else None
+    pair_metadata: dict[tuple[str, int], tuple[str, str, float, float]] = {}
+    if matched_pair is not None:
+        point_difference, negative_h2_difference, left, right = matched_pair
+        pair_metadata[(str(left["dataset"]), int(left["k"]))] = (
+            "matched_Rpoint_pair", "A", point_difference, -negative_h2_difference
+        )
+        pair_metadata[(str(right["dataset"]), int(right["k"]))] = (
+            "matched_Rpoint_pair", "B", point_difference, -negative_h2_difference
+        )
+    finite_rows: list[dict[str, object]] = []
+    for candidate in finite_candidates:
+        pair_id, pair_member, pair_point_difference, pair_h2_difference = pair_metadata.get(
+            (str(candidate["dataset"]), int(candidate["k"])), ("", "", "", "")
+        )
+        for epsilon in (0.001, 0.005, 0.01, 0.02, 0.05):
+            probabilities = np.full(int(candidate["n_train"]), epsilon)
+            moments = batch_risk_moments(
+                candidate["y_train"], candidate["neighbors"], probabilities,
+                classes=candidate["labels"],
+            )
+            first_order_variance = epsilon * float(candidate["variance_coefficient"])
+            exact_variance = float(moments.variance)
+            finite_rows.append(
+                {
+                    "dataset": candidate["dataset"],
+                    "seed": candidate["seed"],
+                    "k": candidate["k"],
+                    "n_train": candidate["n_train"],
+                    "n_query": candidate["n_query"],
+                    "epsilon": epsilon,
+                    "point_risk": candidate["point_risk"],
+                    "H2": candidate["H2"],
+                    "variance_coefficient": candidate["variance_coefficient"],
+                    "first_order_variance": first_order_variance,
+                    "exact_expectation": float(moments.expectation),
+                    "exact_variance": exact_variance,
+                    "relative_error": abs(exact_variance - first_order_variance) / max(exact_variance, 1e-15),
+                    "variance_ratio_exact_over_first_order": exact_variance / max(first_order_variance, 1e-15),
+                    "overlap_pair_count": moments.overlap_pair_count,
+                    "pair_id": pair_id,
+                    "pair_member": pair_member,
+                    "matched_pair_point_difference": pair_point_difference,
+                    "matched_pair_H2_difference": pair_h2_difference,
+                }
+            )
+    save_csv(PROCESSED_DIR / "e3_finite_noise_validation.csv", finite_rows)
     save_csv(PROCESSED_DIR / "e3_probability_risk.csv", rows)
     save_csv(PROCESSED_DIR / "e3_h2_variance_validation.csv", h2_rows)
 
@@ -1180,6 +1297,70 @@ def run_e6() -> None:
                     "prediction_changes": combined_changed,
                     "change_rate": combined_changed / trials,
                     "certificate_applicable": bool(single_prototype_motion_safe(int(top_two_gap(base_counts)[0]))),
+                }
+            )
+
+    # A finite geometry curve varies both the boundary gap and the displacement
+    # radius.  The random angle makes entry and prediction-change probabilities
+    # observable instead of reducing the construction to three deterministic cases.
+    curve_rng = np.random.default_rng(20261017)
+    boundary_gaps = (0.005, 0.01, 0.025, 0.05, 0.10)
+    displacement_radii = (0.0, 0.005, 0.01, 0.02, 0.04, 0.08, 0.16)
+    curve_labels = np.array([0, 1, 0, 0, 1, 1])
+    curve_label_change = curve_labels.copy()
+    curve_label_change[0] = 1
+    for boundary_gap in boundary_gaps:
+        boundary = boundary_motion_construction(
+            target_radius=1.0 + boundary_gap,
+            candidate_radius=1.0,
+            motion_radius=max(displacement_radii),
+        )
+        base_cache = build_neighbor_cache(boundary.points, boundary.query, 5)
+        base_prediction, base_counts, _ = predict_from_neighbors(
+            curve_labels, base_cache.indices, classes=[0, 1]
+        )
+        fixed_label_prediction, _, _ = predict_from_neighbors(
+            curve_label_change, base_cache.indices, classes=[0, 1]
+        )
+        for displacement_radius in displacement_radii:
+            target_inside = 0
+            exchanges = 0
+            geometry_changed = 0
+            combined_changed = 0
+            trials = 2000
+            for _ in range(trials):
+                moved_points = boundary.points.copy()
+                angle = curve_rng.uniform(-np.pi, np.pi)
+                moved_points[boundary.target_index] += displacement_radius * np.array(
+                    [-np.cos(angle), -np.sin(angle)]
+                )
+                moved_cache = build_neighbor_cache(moved_points, boundary.query, 5)
+                geometry_prediction, _, _ = predict_from_neighbors(
+                    curve_labels, moved_cache.indices, classes=[0, 1]
+                )
+                combined_prediction, _, _ = predict_from_neighbors(
+                    curve_label_change, moved_cache.indices, classes=[0, 1]
+                )
+                target_inside += int(boundary.target_index in moved_cache.indices[0])
+                exchanges += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
+                geometry_changed += int(geometry_prediction[0] != base_prediction[0])
+                combined_changed += int(combined_prediction[0] != base_prediction[0])
+            rows.append(
+                {
+                    "perturbation": "motion_probability_curve",
+                    "curve_parameterization": "random_angle_displacement",
+                    "boundary_gap": boundary_gap,
+                    "delta": displacement_radius,
+                    "trials": trials,
+                    "k": 5,
+                    "pre_change_vote_gap": int(top_two_gap(base_counts)[0]),
+                    "baseline_prediction": base_prediction[0],
+                    "fixed_label_prediction_changed": bool(fixed_label_prediction[0] != base_prediction[0]),
+                    "target_in_neighbor_rate": target_inside / trials,
+                    "neighbor_exchange_rate": exchanges / trials,
+                    "geometry_prediction_changed_rate": geometry_changed / trials,
+                    "combined_prediction_changed_rate": combined_changed / trials,
+                    "motion_condition": "random_angle_curve",
                 }
             )
 
