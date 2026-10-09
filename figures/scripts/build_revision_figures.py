@@ -53,7 +53,7 @@ def save(fig: plt.Figure, stem: str) -> None:
 def fig1_framework() -> None:
     """Show correct LOO decisions alongside a retained-prototype flip."""
 
-    fig, axes = plt.subplots(1, 2, figsize=(9.2, 3.8))
+    fig, axes = plt.subplots(1, 3, figsize=(12.6, 3.8), gridspec_kw={"width_ratios": [1, 1, 1.05]})
     colors = {0: "#377eb8", 1: "#d95f02"}
     points = np.array([
         [-2.00, -0.15], [-1.80, 0.05], [-1.60, -0.05],
@@ -131,11 +131,33 @@ def fig1_framework() -> None:
         transform=axes[1].transAxes, ha="center", va="bottom", fontsize=8.5,
     )
     panel_label(axes[1], "b")
+    # A compact influence-incidence view makes the batch-level extension
+    # visible: shared columns correspond to prototypes reused by several
+    # queries, whereas the remaining columns are query-specific directions.
+    influence_matrix = np.array(
+        [[1, 1, 1, 0, 0, 0],
+         [1, 1, 0, 1, 0, 0],
+         [1, 1, 0, 0, 1, 0],
+         [1, 1, 0, 0, 0, 1]],
+        dtype=float,
+    )
+    image = axes[2].imshow(influence_matrix, cmap="Blues", vmin=0, vmax=1, aspect="auto")
+    axes[2].set_xticks(range(6), ["p1", "p2", "p3", "p4", "p5", "p6"])
+    axes[2].set_yticks(range(4), ["q1", "q2", "q3", "q4"])
+    axes[2].set_xlabel("training prototype", fontsize=8)
+    axes[2].set_ylabel("query", fontsize=8)
+    axes[2].set_title("shared influence columns", fontsize=8.5)
+    axes[2].tick_params(labelsize=7)
+    for row in range(influence_matrix.shape[0]):
+        for column in range(influence_matrix.shape[1]):
+            if influence_matrix[row, column] > 0:
+                axes[2].text(column, row, "1", ha="center", va="center", fontsize=8)
+    panel_label(axes[2], "c")
     xmin = float(points[:, 0].min() - 0.35)
     xmax = float(points[:, 0].max() + 0.35)
     ymin = float(min(points[:, 1].min(), query[:, 1].min()) - 0.35)
     ymax = float(max(points[:, 1].max(), query[:, 1].max()) + 0.35)
-    for ax in axes:
+    for ax in axes[:2]:
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(ymin, ymax)
         ax.set_aspect("equal")
@@ -146,6 +168,8 @@ def fig1_framework() -> None:
         ax.set_ylabel("feature 2", fontsize=8)
         for spine in ax.spines.values():
             spine.set_color("#bbbbbb")
+    for spine in axes[2].spines.values():
+        spine.set_color("#bbbbbb")
     write_panel("fig1_revision_framework_panels.csv", [
         {"panel": "a", "operation": "LOO at each training location", "k": k,
          "base_votes": ":".join(map(str, base_counts[0])), "changed_votes": "",
@@ -155,6 +179,9 @@ def fig1_framework() -> None:
          "base_votes": ":".join(map(str, base_counts[0])), "changed_votes": ":".join(map(str, relabel_counts[0])),
          "base_prediction": int(base_prediction[0]), "changed_prediction": int(relabel_prediction[0]),
          "loo_correct": loo_correct, "loo_total": len(points), "query_type": "independent"},
+        {"panel": "c", "operation": "shared batch influence incidence",
+         "k": 3, "shared_prototypes": 2, "query_count": 4,
+         "matrix_rows": 4, "matrix_columns": 6, "query_type": "shared_batch"},
     ])
     save(fig, "fig1_revision_framework")
 
@@ -237,6 +264,7 @@ def fig2_theory() -> None:
 
 def fig3_probability() -> None:
     rows = read_csv("e3_probability_risk.csv")
+    finite_rows = read_csv("e3_finite_noise_validation.csv")
     fig, axes = plt.subplots(2, 2, figsize=(8.2, 6.0))
     independent_rows = [r for r in rows if r["assumption"] == "independent_flips"]
     exact = np.array([float(r["exact_expectation_independent_model"]) for r in independent_rows])
@@ -249,25 +277,45 @@ def fig3_probability() -> None:
     axes[0, 0].plot([0, lim], [0, lim], "k--", lw=0.8)
     axes[0, 0].set(xlabel="exact expectation", ylabel="Monte Carlo mean")
     panel_label(axes[0, 0], "a")
-    axes[0, 1].scatter(exact, first, c=[float(r["mean_flip_probability"]) for r in independent_rows], cmap="plasma", s=18, alpha=0.75)
-    axes[0, 1].plot([0, lim], [0, lim], "k--", lw=0.8)
-    axes[0, 1].set(xlabel="exact expectation", ylabel="first-order approximation")
+    finite_real = [r for r in finite_rows if r.get("structure_type") == "real_data"]
+    axes[0, 1].scatter(
+        [float(r["epsilon"]) for r in finite_real],
+        [float(r["relative_error"]) for r in finite_real],
+        c=[int(r["k"]) for r in finite_real], cmap="plasma", s=20, alpha=0.8,
+    )
+    axes[0, 1].set(xlabel="flip probability $\\epsilon$", ylabel="relative variance error")
+    axes[0, 1].set_ylim(bottom=0)
     panel_label(axes[0, 1], "b")
     axes[1, 0].scatter(variance, bound, c=[int(r["k"]) for r in independent_rows], cmap="viridis", s=18, alpha=0.75)
     lim_v = max(bound.max(), variance.max()) * 1.05
     axes[1, 0].plot([0, lim_v], [0, lim_v], "k--", lw=0.8)
     axes[1, 0].set(xlabel="exact batch variance", ylabel="Efron--Stein bound")
     panel_label(axes[1, 0], "c")
-    by_k = {}
-    for r in independent_rows:
-        by_k.setdefault(int(r["k"]), []).append(
-            abs(float(r["exact_expectation_independent_model"]) - float(r["monte_carlo_mean"]))
+    controlled = [
+        r for r in finite_rows if r.get("pair_id") == "controlled_same_k_Rpoint_pair"
+    ]
+    controlled_by_name = {}
+    for row in controlled:
+        controlled_by_name.setdefault(row["pair_member"], row)
+    names = ["shared", "distributed"]
+    coefficients = [float(controlled_by_name[name]["variance_coefficient"]) for name in names]
+    bars = axes[1, 1].bar(names, coefficients, color=["#377eb8", "#d95f02"], width=0.62)
+    axes[1, 1].set(xlabel="same $k=3$, $q=4$, $R_{\\mathrm{point}}=1$",
+                    ylabel="first-order variance coefficient")
+    for bar, name in zip(bars, names):
+        row = controlled_by_name[name]
+        axes[1, 1].text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"$H_2$={float(row['H2']):.3f}",
+            ha="center", va="bottom", fontsize=8,
         )
-    axes[1, 1].boxplot([by_k[k] for k in sorted(by_k)], tick_labels=[str(k) for k in sorted(by_k)], showfliers=False)
-    axes[1, 1].set(xlabel="k", ylabel="|exact - MC mean|")
     panel_label(axes[1, 1], "d")
     fig.colorbar(axes[0, 0].collections[0], ax=axes[0, 0], label="k", fraction=0.046, pad=0.04)
-    write_panel("fig4_probability_panels.csv", [{"panel": "all", **r} for r in rows])
+    write_panel("fig4_probability_panels.csv", [
+        *[{"panel": "a/c", **r} for r in rows],
+        *[{"panel": "b/d", **r} for r in finite_rows],
+    ])
     save(fig, "fig4_probability_stability")
 
 
@@ -354,7 +402,7 @@ def fig6_operations() -> None:
     ties = read_csv("e7_tie_weight_imbalance.csv")
     geometry = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "relabel_plus_radial_displacement"]
     boundary = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "vote_gap_stratified_boundary_motion"]
-    curve = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "motion_probability_curve"]
+    curve = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "four_state_motion_probability_curve"]
     weighted = [r for r in ties if r.get("policy") == "weighted_vote"]
     fig, axes = plt.subplots(2, 3, figsize=(11.4, 6.3))
     axes = axes.ravel()
@@ -367,19 +415,29 @@ def fig6_operations() -> None:
             )
             axes[0].plot(
                 [float(r["delta"]) for r in subset],
-                [float(r["geometry_prediction_changed_rate"]) for r in subset],
-                "o-", color=color, ms=3, lw=1.1, label=f"gap={float(boundary_gap):g}",
+                [float(r["label_only_prediction_changed_rate"]) for r in subset],
+                "o-", color=color, ms=3, lw=1.1, label=f"label, gap={float(boundary_gap):g}",
             )
             axes[0].plot(
                 [float(r["delta"]) for r in subset],
-                [float(r["target_in_neighbor_rate"]) for r in subset],
-                "--", color=color, alpha=0.55, lw=0.9,
+                [float(r["geometry_prediction_changed_rate"]) for r in subset],
+                "--", color=color, alpha=0.85, lw=0.9,
+            )
+            axes[0].plot(
+                [float(r["delta"]) for r in subset],
+                [float(r["combined_prediction_changed_rate"]) for r in subset],
+                ":", color=color, alpha=0.9, lw=1.2,
+            )
+            axes[0].plot(
+                [float(r["delta"]) for r in subset],
+                [float(r["candidate_in_neighbor_rate"]) for r in subset],
+                "-.", color=color, alpha=0.35, lw=0.8,
             )
         axes[0].text(
-            0.98, 0.04, "solid: prediction change\ndashed: target enters",
+            0.98, 0.04, "solid: label-only; dashed: geometry-only\ndotted: joint; dash-dot: candidate enters",
             transform=axes[0].transAxes, ha="right", va="bottom", fontsize=6.5,
         )
-        axes[0].set(xlabel="displacement radius $\\delta$", ylabel="probability")
+        axes[0].set(xlabel="moved-prototype displacement $\\delta$", ylabel="prediction-change probability")
         axes[0].set_ylim(-0.04, 1.04)
         axes[0].legend(frameon=False, fontsize=6.5, ncol=2, loc="upper left")
     else:

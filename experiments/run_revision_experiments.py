@@ -276,6 +276,7 @@ def run_e0() -> None:
         lines.append(f"| `{table.name}` | {rows} | archived baseline |")
     same_split_rows: list[dict[str, object]] = []
     historical_rows: list[dict[str, object]] = []
+    historical_missing_rows: list[dict[str, object]] = []
     revision_table = PROCESSED_DIR / "e2_deterministic_influence.csv"
     legacy_table = BASELINE_TABLE_DIR / "paa_multiclass_benchmark.csv"
     if revision_table.exists():
@@ -307,6 +308,16 @@ def run_e0() -> None:
     if revision_table.exists() and legacy_table.exists():
         manifest = load_manifest()
         display_to_stem = {row["dataset"]: stem for stem, row in manifest.items()}
+        normalized_to_stem = {
+            str(name).strip().lower().replace("-", "_").replace(" ", "_"): stem
+            for name, stem in display_to_stem.items()
+        }
+        normalized_to_stem.update(
+            {
+                stem.strip().lower().replace("-", "_").replace(" ", "_"): stem
+                for stem in manifest
+            }
+        )
         with legacy_table.open(encoding="utf-8", newline="") as handle:
             legacy_rows = list(csv.DictReader(handle))
         with revision_table.open(encoding="utf-8", newline="") as handle:
@@ -317,9 +328,25 @@ def run_e0() -> None:
             if row["split"] == "test"
         }
         for row in legacy_rows:
-            key = (display_to_stem.get(row["dataset"], row["dataset"]), int(row["seed"]), int(row["k"]))
+            raw_dataset = str(row["dataset"])
+            normalized_dataset = raw_dataset.strip().lower().replace("-", "_").replace(" ", "_")
+            dataset_stem = normalized_to_stem.get(normalized_dataset)
+            key = (
+                dataset_stem or display_to_stem.get(raw_dataset, raw_dataset),
+                int(row["seed"]),
+                int(row["k"]),
+            )
             current = revised.get(key)
             if current is None:
+                historical_missing_rows.append(
+                    {
+                        "legacy_dataset": raw_dataset,
+                        "normalized_dataset": normalized_dataset,
+                        "seed": key[1],
+                        "k": key[2],
+                        "reason": "dataset-name mapping" if dataset_stem is None else "missing revision key",
+                    }
+                )
                 continue
             historical_rows.append(
                 {
@@ -339,7 +366,9 @@ def run_e0() -> None:
                 }
             )
         save_csv(PROCESSED_DIR / "e0_historical_comparison.csv", historical_rows)
+        save_csv(PROCESSED_DIR / "e0_historical_missing.csv", historical_missing_rows)
     historical_input_available = revision_table.exists() and legacy_table.exists()
+    historical_complete = bool(historical_input_available and not historical_missing_rows)
     if same_split_rows:
         lines.extend(
             [
@@ -356,6 +385,7 @@ def run_e0() -> None:
                 f"The historical join is stored separately in `e0_historical_comparison.csv` for {len(historical_rows)} rows.",
                 "Because the archived protocol used different random states and",
                 "split-call order, these rows are descriptive and not paired evidence.",
+                f"The key-level audit found {len(historical_missing_rows)} unmatched legacy rows; details are in `e0_historical_missing.csv`.",
             ]
         )
     if not historical_input_available:
@@ -369,6 +399,17 @@ def run_e0() -> None:
         print(
             "WARNING: E0 historical comparison is INCOMPLETE; set "
             "KNN_BASELINE_TABLE_DIR to a directory containing paa_multiclass_benchmark.csv."
+        )
+    elif not historical_complete:
+        lines.extend(
+            [
+                "",
+                f"| Historical comparison | {len(historical_missing_rows)} | INCOMPLETE: unmatched legacy keys are listed in `e0_historical_missing.csv` |",
+                "The join is not treated as complete until every legacy dataset-seed-k key is matched.",
+            ]
+        )
+        print(
+            f"WARNING: E0 historical comparison is INCOMPLETE; {len(historical_missing_rows)} keys were not matched."
         )
     lines.extend(
         [
@@ -389,9 +430,11 @@ def run_e0() -> None:
         json.dumps(
             {
                 "same_split_audit": "complete" if same_split_rows else "incomplete",
-                "historical_comparison": "complete" if historical_input_available else "incomplete",
+                "historical_comparison": "complete" if historical_complete else "incomplete",
                 "historical_input": "paa_multiclass_benchmark.csv",
                 "baseline_input_dir_env": "KNN_BASELINE_TABLE_DIR",
+                "historical_rows": len(historical_rows),
+                "historical_missing_rows": len(historical_missing_rows),
             },
             indent=2,
         )
@@ -809,7 +852,9 @@ def run_e3() -> None:
                 continue
             finite_candidates.append(
                 {
+                    "candidate_id": f"real::{dataset}::k{k}",
                     "dataset": dataset,
+                    "structure_type": "real_data",
                     "k": k,
                     "seed": 0,
                     "n_train": len(y_train),
@@ -822,28 +867,80 @@ def run_e3() -> None:
                     "variance_coefficient": float(np.sum(influence_counts**2) / len(cache.indices) ** 2),
                 }
             )
+    # A controlled same-k/same-q comparison isolates influence concentration.
+    # Both structures have k=3, q=4, R_point=1, but the decisive prototypes
+    # are shared in one structure and disjoint in the other.
+    controlled_structures = {
+        "controlled_shared_h2": (
+            np.array([0, 0, 1, 1, 1, 1]),
+            np.array([[0, 1, 2], [0, 1, 3], [0, 1, 4], [0, 1, 5]]),
+        ),
+        "controlled_distributed_h2": (
+            np.array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+            np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]),
+        ),
+    }
+    for dataset, (controlled_labels, controlled_neighbors) in controlled_structures.items():
+        influence = compute_influence(
+            controlled_labels, controlled_neighbors, classes=np.array([0, 1]), tie_priority=[0, 1]
+        )
+        influence_counts = influence.decisive_influence.astype(float)
+        total_influence = float(np.sum(influence_counts))
+        finite_candidates.append(
+            {
+                "candidate_id": f"controlled::{dataset}",
+                "dataset": dataset,
+                "structure_type": "controlled",
+                "k": 3,
+                "seed": 0,
+                "n_train": len(controlled_labels),
+                "n_query": len(controlled_neighbors),
+                "neighbors": controlled_neighbors,
+                "y_train": controlled_labels,
+                "labels": np.array([0, 1]),
+                "point_risk": float(np.mean(influence.exact_vulnerable)),
+                "H2": float(np.sum(influence_counts**2) / total_influence**2),
+                "variance_coefficient": float(np.sum(influence_counts**2) / len(controlled_neighbors) ** 2),
+            }
+        )
     pair_options = []
     for left_index, left in enumerate(finite_candidates):
         for right in finite_candidates[left_index + 1:]:
             point_difference = abs(float(left["point_risk"]) - float(right["point_risk"]))
             h2_difference = abs(float(left["H2"]) - float(right["H2"]))
-            if point_difference <= 0.10 and h2_difference >= 0.02:
+            if (
+                int(left["k"]) == int(right["k"])
+                and int(left["n_query"]) == int(right["n_query"])
+                and point_difference <= 0.10
+                and h2_difference >= 0.02
+                and left["structure_type"] == right["structure_type"]
+            ):
                 pair_options.append((point_difference, -h2_difference, left, right))
     pair_options.sort(key=lambda item: (item[0], item[1]))
     matched_pair = pair_options[0] if pair_options else None
-    pair_metadata: dict[tuple[str, int], tuple[str, str, float, float]] = {}
+    pair_metadata: dict[str, tuple[str, str, float, float]] = {}
     if matched_pair is not None:
         point_difference, negative_h2_difference, left, right = matched_pair
-        pair_metadata[(str(left["dataset"]), int(left["k"]))] = (
+        pair_metadata[str(left["candidate_id"])] = (
             "matched_Rpoint_pair", "A", point_difference, -negative_h2_difference
         )
-        pair_metadata[(str(right["dataset"]), int(right["k"]))] = (
+        pair_metadata[str(right["candidate_id"])] = (
             "matched_Rpoint_pair", "B", point_difference, -negative_h2_difference
         )
+    controlled_left = next(candidate for candidate in finite_candidates if candidate["candidate_id"] == "controlled::controlled_shared_h2")
+    controlled_right = next(candidate for candidate in finite_candidates if candidate["candidate_id"] == "controlled::controlled_distributed_h2")
+    controlled_point_difference = abs(float(controlled_left["point_risk"]) - float(controlled_right["point_risk"]))
+    controlled_h2_difference = abs(float(controlled_left["H2"]) - float(controlled_right["H2"]))
+    pair_metadata[str(controlled_left["candidate_id"])] = (
+        "controlled_same_k_Rpoint_pair", "shared", controlled_point_difference, controlled_h2_difference
+    )
+    pair_metadata[str(controlled_right["candidate_id"])] = (
+        "controlled_same_k_Rpoint_pair", "distributed", controlled_point_difference, controlled_h2_difference
+    )
     finite_rows: list[dict[str, object]] = []
     for candidate in finite_candidates:
         pair_id, pair_member, pair_point_difference, pair_h2_difference = pair_metadata.get(
-            (str(candidate["dataset"]), int(candidate["k"])), ("", "", "", "")
+            str(candidate["candidate_id"]), ("", "", "", "")
         )
         for epsilon in (0.001, 0.005, 0.01, 0.02, 0.05):
             probabilities = np.full(int(candidate["n_train"]), epsilon)
@@ -856,6 +953,7 @@ def run_e3() -> None:
             finite_rows.append(
                 {
                     "dataset": candidate["dataset"],
+                    "structure_type": candidate["structure_type"],
                     "seed": candidate["seed"],
                     "k": candidate["k"],
                     "n_train": candidate["n_train"],
@@ -1300,54 +1398,67 @@ def run_e6() -> None:
                 }
             )
 
-    # A finite geometry curve varies both the boundary gap and the displacement
-    # radius.  The random angle makes entry and prediction-change probabilities
-    # observable instead of reducing the construction to three deterministic cases.
+    # A finite four-state intervention curve separates the original vote,
+    # label-only intervention, geometry-only intervention, and their joint
+    # application.  The label target and the moved prototype are distinct: a
+    # joint intervention therefore cannot collapse into a restatement of the
+    # same neighbor-exchange event.
     curve_rng = np.random.default_rng(20261017)
     boundary_gaps = (0.005, 0.01, 0.025, 0.05, 0.10)
     displacement_radii = (0.0, 0.005, 0.01, 0.02, 0.04, 0.08, 0.16)
-    curve_labels = np.array([0, 1, 0, 0, 1, 1])
+    curve_labels = np.array([0, 0, 1, 0, 1, 1])
     curve_label_change = curve_labels.copy()
     curve_label_change[0] = 1
     for boundary_gap in boundary_gaps:
-        boundary = boundary_motion_construction(
-            target_radius=1.0 + boundary_gap,
-            candidate_radius=1.0,
-            motion_radius=max(displacement_radii),
+        # points 0/1 are the fixed label target and movable prototype;
+        # point 2 is the outside candidate; points 3--5 are inner neighbors.
+        boundary_points = np.array(
+            [
+                [0.80, 0.0],
+                [1.00, 0.0],
+                [1.00 + boundary_gap, 0.0],
+                [0.0, 0.30],
+                [0.0, -0.30],
+                [-0.30, 0.0],
+            ],
+            dtype=float,
         )
-        base_cache = build_neighbor_cache(boundary.points, boundary.query, 5)
+        boundary_query = np.zeros((1, 2), dtype=float)
+        base_cache = build_neighbor_cache(boundary_points, boundary_query, 5)
         base_prediction, base_counts, _ = predict_from_neighbors(
-            curve_labels, base_cache.indices, classes=[0, 1]
+            curve_labels, base_cache.indices, classes=[0, 1], tie_priority=[0, 1]
         )
         fixed_label_prediction, _, _ = predict_from_neighbors(
-            curve_label_change, base_cache.indices, classes=[0, 1]
+            curve_label_change, base_cache.indices, classes=[0, 1], tie_priority=[0, 1]
         )
         for displacement_radius in displacement_radii:
             target_inside = 0
             exchanges = 0
+            label_only_changed = 0
             geometry_changed = 0
             combined_changed = 0
             trials = 2000
             for _ in range(trials):
-                moved_points = boundary.points.copy()
+                moved_points = boundary_points.copy()
                 angle = curve_rng.uniform(-np.pi, np.pi)
-                moved_points[boundary.target_index] += displacement_radius * np.array(
-                    [-np.cos(angle), -np.sin(angle)]
+                moved_points[1] += displacement_radius * np.array(
+                    [np.cos(angle), np.sin(angle)]
                 )
-                moved_cache = build_neighbor_cache(moved_points, boundary.query, 5)
+                moved_cache = build_neighbor_cache(moved_points, boundary_query, 5)
                 geometry_prediction, _, _ = predict_from_neighbors(
-                    curve_labels, moved_cache.indices, classes=[0, 1]
+                    curve_labels, moved_cache.indices, classes=[0, 1], tie_priority=[0, 1]
                 )
                 combined_prediction, _, _ = predict_from_neighbors(
-                    curve_label_change, moved_cache.indices, classes=[0, 1]
+                    curve_label_change, moved_cache.indices, classes=[0, 1], tie_priority=[0, 1]
                 )
-                target_inside += int(boundary.target_index in moved_cache.indices[0])
+                target_inside += int(2 in moved_cache.indices[0])
                 exchanges += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
+                label_only_changed += int(fixed_label_prediction[0] != base_prediction[0])
                 geometry_changed += int(geometry_prediction[0] != base_prediction[0])
                 combined_changed += int(combined_prediction[0] != base_prediction[0])
             rows.append(
                 {
-                    "perturbation": "motion_probability_curve",
+                    "perturbation": "four_state_motion_probability_curve",
                     "curve_parameterization": "random_angle_displacement",
                     "boundary_gap": boundary_gap,
                     "delta": displacement_radius,
@@ -1356,11 +1467,13 @@ def run_e6() -> None:
                     "pre_change_vote_gap": int(top_two_gap(base_counts)[0]),
                     "baseline_prediction": base_prediction[0],
                     "fixed_label_prediction_changed": bool(fixed_label_prediction[0] != base_prediction[0]),
-                    "target_in_neighbor_rate": target_inside / trials,
+                    "candidate_in_neighbor_rate": target_inside / trials,
+                    "target_in_neighbor_rate": 1.0,
                     "neighbor_exchange_rate": exchanges / trials,
+                    "label_only_prediction_changed_rate": label_only_changed / trials,
                     "geometry_prediction_changed_rate": geometry_changed / trials,
                     "combined_prediction_changed_rate": combined_changed / trials,
-                    "motion_condition": "random_angle_curve",
+                    "motion_condition": "four_state_random_angle_curve",
                 }
             )
 

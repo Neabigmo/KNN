@@ -283,6 +283,112 @@ def _joint_binary_flip_probability(
     return float(dp[np.ix_(q_changed, r_changed)].sum())
 
 
+def factorized_joint_binary_flip_probability(
+    labels_q: np.ndarray,
+    labels_r: np.ndarray,
+    indices_q: np.ndarray,
+    indices_r: np.ndarray,
+    y_train: np.ndarray,
+    flip_probabilities: Iterable[float],
+    *,
+    classes: Iterable[object] | None = None,
+    tie_priority: Iterable[object] | None = None,
+) -> float:
+    """Exact joint change probability using a shared/unique factorization.
+
+    The common neighborhood contributes one Poisson-binomial variable ``U``.
+    Conditional on ``U``, the query-specific parts are independent and their
+    conditional change probabilities are one-dimensional Poisson-binomial
+    tail sums.  This is algebraically equivalent to the two-query DP but uses
+    O(k) working memory and O(k**2) arithmetic for one edge.
+    """
+
+    y_train = np.asarray(y_train)
+    labels_q = np.asarray(labels_q)
+    labels_r = np.asarray(labels_r)
+    indices_q = np.asarray(indices_q, dtype=int)
+    indices_r = np.asarray(indices_r, dtype=int)
+    probabilities = np.asarray(list(flip_probabilities), dtype=float)
+    class_labels = _binary_labels(
+        np.concatenate([labels_q, labels_r]), classes
+    )
+    if len(probabilities) != len(y_train):
+        raise ValueError("flip_probabilities must match y_train")
+    if np.any(~np.isfinite(probabilities)) or np.any((probabilities < 0) | (probabilities > 1)):
+        raise ValueError("flip_probabilities must lie in [0, 1]")
+    if len(labels_q) != len(indices_q) or len(labels_r) != len(indices_r):
+        raise ValueError("labels and neighbor indices must have equal lengths")
+    if np.any(indices_q < 0) or np.any(indices_q >= len(y_train)):
+        raise ValueError("indices_q contains an invalid training index")
+    if np.any(indices_r < 0) or np.any(indices_r >= len(y_train)):
+        raise ValueError("indices_r contains an invalid training index")
+
+    q_set = set(int(index) for index in indices_q)
+    r_set = set(int(index) for index in indices_r)
+    common = sorted(q_set & r_set)
+    q_only = sorted(q_set - r_set)
+    r_only = sorted(r_set - q_set)
+    class_zero = class_labels[0]
+
+    def class_zero_rates(indices: list[int]) -> np.ndarray:
+        return np.asarray(
+            [
+                _postflip_class_zero_probability(
+                    y_train[index], class_zero, probabilities[index]
+                )
+                for index in indices
+            ],
+            dtype=float,
+        )
+
+    shared_pmf = poisson_binomial_pmf(class_zero_rates(common))
+    q_only_pmf = poisson_binomial_pmf(class_zero_rates(q_only))
+    r_only_pmf = poisson_binomial_pmf(class_zero_rates(r_only))
+
+    base_q, _ = predict_from_counts(
+        np.array([[np.sum(labels_q == class_zero), np.sum(labels_q != class_zero)]]),
+        class_labels,
+        tie_priority=tie_priority,
+    )
+    base_r, _ = predict_from_counts(
+        np.array([[np.sum(labels_r == class_zero), np.sum(labels_r != class_zero)]]),
+        class_labels,
+        tie_priority=tie_priority,
+    )
+    q_changed_given_shared = np.zeros(len(shared_pmf), dtype=float)
+    r_changed_given_shared = np.zeros(len(shared_pmf), dtype=float)
+    q_total = len(indices_q)
+    r_total = len(indices_r)
+    for shared_count in range(len(shared_pmf)):
+        q_counts = np.column_stack(
+            [
+                shared_count + np.arange(len(q_only_pmf)),
+                q_total - shared_count - np.arange(len(q_only_pmf)),
+            ]
+        )
+        r_counts = np.column_stack(
+            [
+                shared_count + np.arange(len(r_only_pmf)),
+                r_total - shared_count - np.arange(len(r_only_pmf)),
+            ]
+        )
+        q_predictions, _ = predict_from_counts(
+            q_counts, class_labels, tie_priority=tie_priority
+        )
+        r_predictions, _ = predict_from_counts(
+            r_counts, class_labels, tie_priority=tie_priority
+        )
+        q_changed_given_shared[shared_count] = float(
+            np.dot(q_only_pmf, q_predictions != base_q[0])
+        )
+        r_changed_given_shared[shared_count] = float(
+            np.dot(r_only_pmf, r_predictions != base_r[0])
+        )
+    return float(
+        np.dot(shared_pmf, q_changed_given_shared * r_changed_given_shared)
+    )
+
+
 @dataclass(frozen=True)
 class BatchRiskMoments:
     """Moments of the batch fraction changed by one shared label draw."""
@@ -382,15 +488,15 @@ def batch_risk_moments(
     overlap_joint = 0.0
     for left, right in overlap_pairs:
         overlap_product += float(query_probabilities[left] * query_probabilities[right])
-        overlap_joint += _joint_binary_flip_probability(
+        overlap_joint += factorized_joint_binary_flip_probability(
             y_train[neighbors[left]],
             y_train[neighbors[right]],
             neighbors[left],
             neighbors[right],
             y_train,
             probabilities,
-            labels,
-            tie_priority,
+            classes=labels,
+            tie_priority=tie_priority,
         )
     second_numerator = float(np.sum(query_probabilities)) + 2.0 * (
         total_pair_product - overlap_product + overlap_joint

@@ -8,6 +8,7 @@ from knn_reliability.probability import (
     binary_flip_probability,
     dense_batch_risk_moments,
     enumerate_shared_flip_moments,
+    factorized_joint_binary_flip_probability,
     first_order_risk,
     first_order_variance_bounds,
     monte_carlo_batch_risk,
@@ -126,3 +127,40 @@ def test_overlap_graph_matches_dense_pairwise_reference():
     np.testing.assert_allclose(sparse.query_probabilities, dense.query_probabilities)
     np.testing.assert_allclose(sparse.expectation, dense.expectation, atol=1e-14)
     np.testing.assert_allclose(sparse.variance, dense.variance, atol=1e-14)
+
+
+def test_factorized_joint_probability_matches_dense_reference():
+    rng = np.random.default_rng(20261009)
+    for _ in range(756):
+        n_train = int(rng.integers(4, 13))
+        k = int(rng.integers(1, min(6, n_train) + 1))
+        left = np.sort(rng.choice(n_train, size=k, replace=False))
+        right = np.sort(rng.choice(n_train, size=k, replace=False))
+        y_train = rng.integers(0, 2, size=n_train)
+        # Keep both local neighborhoods non-degenerate so the comparison
+        # covers tie priorities and both baseline classes.
+        if len(np.unique(y_train[left])) < 2:
+            y_train[left[0]] = 1 - y_train[left[0]]
+        if len(np.unique(y_train[right])) < 2:
+            y_train[right[0]] = 1 - y_train[right[0]]
+        probabilities = rng.uniform(0.0, 0.35, size=n_train)
+        expected = dense_batch_risk_moments(
+            y_train,
+            np.asarray([left, right]),
+            probabilities,
+            classes=[0, 1],
+        )
+        actual = factorized_joint_binary_flip_probability(
+            y_train[left],
+            y_train[right],
+            left,
+            right,
+            y_train,
+            probabilities,
+            classes=[0, 1],
+        )
+        # The dense moment contains the diagonal terms; isolate the pair
+        # joint probability from its two-query second moment.
+        p_left, p_right = expected.query_probabilities
+        dense_joint = (4.0 * expected.second_moment - p_left - p_right) / 2.0
+        np.testing.assert_allclose(actual, dense_joint, rtol=0, atol=2e-14)
