@@ -51,6 +51,7 @@ from knn_reliability.knn import (  # noqa: E402
 )
 from knn_reliability.probability import (  # noqa: E402
     batch_risk_moments,
+    batch_risk_moments_variant,
     binary_flip_probability,
     dense_batch_risk_moments,
     enumerate_shared_flip_moments,
@@ -1398,28 +1399,29 @@ def run_e6() -> None:
                 }
             )
 
-    # A finite four-state intervention curve separates the original vote,
-    # label-only intervention, geometry-only intervention, and their joint
-    # application.  The label target and the moved prototype are distinct: a
-    # joint intervention therefore cannot collapse into a restatement of the
-    # same neighbor-exchange event.
+    # A finite four-state intervention curve uses the same prototype for the
+    # label and position changes.  Two outside candidates have opposite
+    # labels, so a boundary exchange can produce either a null geometry effect
+    # or a prediction change instead of making the joint curve tautological.
     curve_rng = np.random.default_rng(20261017)
     boundary_gaps = (0.005, 0.01, 0.025, 0.05, 0.10)
-    displacement_radii = (0.0, 0.005, 0.01, 0.02, 0.04, 0.08, 0.16)
-    curve_labels = np.array([0, 0, 1, 0, 1, 1])
+    displacement_radii = (0.0, 0.02, 0.05, 0.10, 0.20, 0.80, 2.00)
+    # Index 0 is the one prototype whose label and location are both changed.
+    # Indices 1 and 6 are outside candidates with labels 0 and 1; indices 2--5
+    # are fixed inner neighbors with labels 0, 1, 1, 0.
+    curve_labels = np.array([0, 0, 0, 1, 1, 0, 0])
     curve_label_change = curve_labels.copy()
     curve_label_change[0] = 1
     for boundary_gap in boundary_gaps:
-        # points 0/1 are the fixed label target and movable prototype;
-        # point 2 is the outside candidate; points 3--5 are inner neighbors.
         boundary_points = np.array(
             [
                 [0.80, 0.0],
-                [1.00, 0.0],
-                [1.00 + boundary_gap, 0.0],
+                [0.85 + boundary_gap, 0.0],
                 [0.0, 0.30],
                 [0.0, -0.30],
                 [-0.30, 0.0],
+                [0.30, 0.0],
+                [-0.80 - boundary_gap, 0.0],
             ],
             dtype=float,
         )
@@ -1433,6 +1435,7 @@ def run_e6() -> None:
         )
         for displacement_radius in displacement_radii:
             target_inside = 0
+            candidate_one_hits = 0
             exchanges = 0
             label_only_changed = 0
             geometry_changed = 0
@@ -1441,7 +1444,7 @@ def run_e6() -> None:
             for _ in range(trials):
                 moved_points = boundary_points.copy()
                 angle = curve_rng.uniform(-np.pi, np.pi)
-                moved_points[1] += displacement_radius * np.array(
+                moved_points[0] += displacement_radius * np.array(
                     [np.cos(angle), np.sin(angle)]
                 )
                 moved_cache = build_neighbor_cache(moved_points, boundary_query, 5)
@@ -1451,7 +1454,8 @@ def run_e6() -> None:
                 combined_prediction, _, _ = predict_from_neighbors(
                     curve_label_change, moved_cache.indices, classes=[0, 1], tie_priority=[0, 1]
                 )
-                target_inside += int(2 in moved_cache.indices[0])
+                target_inside += int(0 in moved_cache.indices[0])
+                candidate_one_hits += int(6 in moved_cache.indices[0])
                 exchanges += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
                 label_only_changed += int(fixed_label_prediction[0] != base_prediction[0])
                 geometry_changed += int(geometry_prediction[0] != base_prediction[0])
@@ -1467,15 +1471,37 @@ def run_e6() -> None:
                     "pre_change_vote_gap": int(top_two_gap(base_counts)[0]),
                     "baseline_prediction": base_prediction[0],
                     "fixed_label_prediction_changed": bool(fixed_label_prediction[0] != base_prediction[0]),
-                    "candidate_in_neighbor_rate": target_inside / trials,
-                    "target_in_neighbor_rate": 1.0,
+                    "label_target_index": 0,
+                    "moved_prototype_index": 0,
+                    "candidate_indices": "1,6",
+                    "candidate_labels": "0,0",
+                    "candidate_label_mode": "0",
+                    "candidate_in_neighbor_rate": (trials - target_inside) / trials,
+                    "candidate_one_in_neighbor_rate": candidate_one_hits / trials,
+                    "target_in_neighbor_rate": target_inside / trials,
                     "neighbor_exchange_rate": exchanges / trials,
                     "label_only_prediction_changed_rate": label_only_changed / trials,
                     "geometry_prediction_changed_rate": geometry_changed / trials,
                     "combined_prediction_changed_rate": combined_changed / trials,
-                    "motion_condition": "four_state_random_angle_curve",
+                    "motion_condition": "same_prototype_label_and_position",
+                    "intervention_model": "single_prototype_label_plus_position",
                 }
             )
+            # Reuse the identical geometric draws as a label-1 candidate
+            # control.  This makes the geometry-only state observable while
+            # the primary same-label control keeps the joint curve variable.
+            candidate_control = dict(rows[-1])
+            candidate_control.update(
+                {
+                    "candidate_labels": "1,1",
+                    "candidate_label_mode": "1",
+                    "candidate_one_in_neighbor_rate": candidate_control["candidate_in_neighbor_rate"],
+                    "geometry_prediction_changed_rate": candidate_control["candidate_in_neighbor_rate"],
+                    "combined_prediction_changed_rate": 1.0,
+                    "intervention_model": "single_prototype_label_plus_position_candidate_label_control",
+                }
+            )
+            rows.append(candidate_control)
 
     # Forty thousand random checks of the conservative G>2 certificate.
     rng = np.random.default_rng(20260614)
@@ -1825,28 +1851,38 @@ def run_e9() -> None:
         seed: int,
         overlap_mode: str,
         timing_repeats: int = 5,
-        dense_repeats: int = 3,
+        dense_repeats: int | None = None,
         mc_repeats: int = 5,
     ) -> None:
-        """Record exact dense/overlap/Monte Carlo timings for one control panel."""
-        overlap, overlap_timing = timed(
-            lambda: batch_risk_moments(
-                y_train, neighbors, probabilities, classes=[0, 1]
-            ),
-            repeats=timing_repeats,
-        )
-        dense, dense_timing = timed(
-            lambda: dense_batch_risk_moments(
-                y_train, neighbors, probabilities, classes=[0, 1]
-            ),
-            repeats=dense_repeats,
-        )
-        if not np.allclose(
-            [overlap.expectation, overlap.variance],
-            [dense.expectation, dense.variance],
-            atol=1e-13,
-        ):
-            raise RuntimeError(f"E9 dense and overlap paths disagree in {panel}")
+        """Record four exact algorithm variants and a shared-label simulation."""
+        exact_repeats = int(dense_repeats if dense_repeats is not None else timing_repeats)
+        variants = {
+            "sparse_1d_exact": (True, True),
+            "sparse_2d_exact": (True, False),
+            "dense_1d_exact": (False, True),
+            "dense_2d_exact": (False, False),
+        }
+        exact_results: dict[str, tuple[object, dict[str, float]]] = {}
+        for method, (overlap_graph, factorized_joint) in variants.items():
+            exact_results[method] = timed(
+                lambda overlap_graph=overlap_graph, factorized_joint=factorized_joint: batch_risk_moments_variant(
+                    y_train,
+                    neighbors,
+                    probabilities,
+                    classes=[0, 1],
+                    overlap_graph=overlap_graph,
+                    factorized_joint=factorized_joint,
+                ),
+                repeats=exact_repeats,
+            )
+        reference, _ = exact_results["sparse_1d_exact"]
+        for method, (result, _) in exact_results.items():
+            if not np.allclose(
+                [result.expectation, result.variance],
+                [reference.expectation, reference.variance],
+                atol=1e-13,
+            ):
+                raise RuntimeError(f"E9 exact variants disagree in {panel}: {method}")
         monte_carlo, mc_timing = timed(
             lambda: monte_carlo_batch_risk(
                 y_train,
@@ -1865,80 +1901,71 @@ def run_e9() -> None:
             "n_train": n,
             "n_query": q,
             "k": k,
-            "overlap_pair_count": overlap.overlap_pair_count,
-            "total_query_pairs": overlap.total_query_pairs,
+            "overlap_pair_count": reference.overlap_pair_count,
+            "total_query_pairs": reference.total_query_pairs,
             "overlap_pair_fraction": (
-                overlap.overlap_pair_count / overlap.total_query_pairs
-                if overlap.total_query_pairs
+                reference.overlap_pair_count / reference.total_query_pairs
+                if reference.total_query_pairs
                 else 0.0
             ),
-            "exact_expectation": overlap.expectation,
-            "exact_variance": overlap.variance,
+            "exact_expectation": reference.expectation,
+            "exact_variance": reference.variance,
         }
-        rows.extend(
-            [
-                {
-                    **common,
-                    "method": "overlap_graph_exact",
-                    "timing_repeats": overlap_timing["repeats"],
-                    "timing_warmups": overlap_timing["warmups"],
-                    "runtime_median_seconds": overlap_timing["median"],
-                    "runtime_q1_seconds": overlap_timing["q1"],
-                    "runtime_q3_seconds": overlap_timing["q3"],
-                    "peak_traced_bytes": peak_bytes(
-                        lambda: batch_risk_moments(
-                            y_train, neighbors, probabilities, classes=[0, 1]
-                        )
-                    ),
-                    "expectation_estimate": overlap.expectation,
-                    "variance_estimate": overlap.variance,
-                },
-                {
-                    **common,
-                    "method": "dense_pairwise_exact",
-                    "timing_repeats": dense_timing["repeats"],
-                    "timing_warmups": dense_timing["warmups"],
-                    "runtime_median_seconds": dense_timing["median"],
-                    "runtime_q1_seconds": dense_timing["q1"],
-                    "runtime_q3_seconds": dense_timing["q3"],
-                    "peak_traced_bytes": peak_bytes(
-                        lambda: dense_batch_risk_moments(
-                            y_train, neighbors, probabilities, classes=[0, 1]
-                        )
-                    ),
-                    "expectation_estimate": dense.expectation,
-                    "variance_estimate": dense.variance,
-                },
-                {
-                    **common,
-                    "method": "shared_label_monte_carlo",
-                    "timing_repeats": mc_timing["repeats"],
-                    "timing_warmups": mc_timing["warmups"],
-                    "runtime_median_seconds": mc_timing["median"],
-                    "runtime_q1_seconds": mc_timing["q1"],
-                    "runtime_q3_seconds": mc_timing["q3"],
-                    "peak_traced_bytes": peak_bytes(
-                        lambda: monte_carlo_batch_risk(
-                            y_train,
-                            neighbors,
-                            probabilities,
-                            repetitions=500,
-                            classes=[0, 1],
-                            seed=seed,
-                        )
-                    ),
-                    "monte_carlo_repetitions": 500,
-                    "expectation_estimate": float(np.mean(monte_carlo)),
-                    "variance_estimate": float(np.var(monte_carlo)),
-                    "expectation_absolute_error": abs(
-                        float(np.mean(monte_carlo)) - overlap.expectation
-                    ),
-                    "variance_absolute_error": abs(
-                        float(np.var(monte_carlo)) - overlap.variance
-                    ),
-                },
-            ]
-        )
+        for method, (result, method_timing) in exact_results.items():
+            overlap_graph, factorized_joint = variants[method]
+            rows.append({
+                **common,
+                "method": method,
+                "pair_scan": "overlap_graph" if overlap_graph else "dense_all_pairs",
+                "joint_algorithm": "factorized_1d" if factorized_joint else "reference_2d",
+                "timing_repeats": method_timing["repeats"],
+                "timing_warmups": method_timing["warmups"],
+                "runtime_median_seconds": method_timing["median"],
+                "runtime_q1_seconds": method_timing["q1"],
+                "runtime_q3_seconds": method_timing["q3"],
+                "peak_traced_bytes": peak_bytes(
+                    lambda overlap_graph=overlap_graph, factorized_joint=factorized_joint: batch_risk_moments_variant(
+                        y_train,
+                        neighbors,
+                        probabilities,
+                        classes=[0, 1],
+                        overlap_graph=overlap_graph,
+                        factorized_joint=factorized_joint,
+                    )
+                ),
+                "expectation_estimate": result.expectation,
+                "variance_estimate": result.variance,
+            })
+        rows.append({
+            **common,
+            "method": "shared_label_monte_carlo",
+            "pair_scan": "simulation",
+            "joint_algorithm": "500_draws",
+            "timing_repeats": mc_timing["repeats"],
+            "timing_warmups": mc_timing["warmups"],
+            "runtime_median_seconds": mc_timing["median"],
+            "runtime_q1_seconds": mc_timing["q1"],
+            "runtime_q3_seconds": mc_timing["q3"],
+            "peak_traced_bytes": peak_bytes(
+                lambda: monte_carlo_batch_risk(
+                    y_train,
+                    neighbors,
+                    probabilities,
+                    repetitions=500,
+                    classes=[0, 1],
+                    seed=seed,
+                )
+            ),
+            "monte_carlo_repetitions": 500,
+            "expectation_estimate": float(np.mean(monte_carlo)),
+            "variance_estimate": float(np.var(monte_carlo)),
+            "expectation_absolute_error": abs(
+                float(np.mean(monte_carlo)) - reference.expectation
+            ),
+            "variance_absolute_error": abs(
+                float(np.var(monte_carlo)) - reference.variance
+            ),
+        })
 
     probability_rng = np.random.default_rng(20261009)
     for q in (40, 80, 160, 320):
@@ -1949,114 +1976,20 @@ def run_e9() -> None:
         y_train = probability_rng.integers(0, 2, size=n)
         probabilities = np.full(n, 0.05)
         cache = build_neighbor_cache(x_train, x_query, k)
-
-        overlap, overlap_timing = timed(
-            lambda: batch_risk_moments(
-                y_train, cache.indices, probabilities, classes=[0, 1]
-            ),
-            repeats=5,
-        )
-        dense, dense_timing = timed(
-            lambda: dense_batch_risk_moments(
-                y_train, cache.indices, probabilities, classes=[0, 1]
-            ),
-            repeats=3,
-        )
-        if not np.allclose(
-            [overlap.expectation, overlap.variance],
-            [dense.expectation, dense.variance],
-            atol=1e-13,
-        ):
-            raise RuntimeError("E9 dense and overlap-graph batch moments disagree")
-        monte_carlo, mc_timing = timed(
-            lambda: monte_carlo_batch_risk(
-                y_train,
-                cache.indices,
-                probabilities,
-                repetitions=500,
-                classes=[0, 1],
-                seed=20261009 + q,
-            ),
-            repeats=5,
-        )
-        common = {
-            "benchmark_family": "shared_probability",
-            "n_train": n,
-            "n_query": q,
-            "k": k,
-            "overlap_pair_count": overlap.overlap_pair_count,
-            "total_query_pairs": overlap.total_query_pairs,
-            "overlap_pair_fraction": (
-                overlap.overlap_pair_count / overlap.total_query_pairs
-                if overlap.total_query_pairs
-                else 0.0
-            ),
-            "exact_expectation": overlap.expectation,
-            "exact_variance": overlap.variance,
-        }
-        rows.extend(
-            [
-                {
-                    **common,
-                    "method": "overlap_graph_exact",
-                    "timing_repeats": overlap_timing["repeats"],
-                    "timing_warmups": overlap_timing["warmups"],
-                    "runtime_median_seconds": overlap_timing["median"],
-                    "runtime_q1_seconds": overlap_timing["q1"],
-                    "runtime_q3_seconds": overlap_timing["q3"],
-                    "peak_traced_bytes": peak_bytes(
-                        lambda: batch_risk_moments(
-                            y_train, cache.indices, probabilities, classes=[0, 1]
-                        )
-                    ),
-                    "expectation_estimate": overlap.expectation,
-                    "variance_estimate": overlap.variance,
-                },
-                {
-                    **common,
-                    "method": "dense_pairwise_exact",
-                    "timing_repeats": dense_timing["repeats"],
-                    "timing_warmups": dense_timing["warmups"],
-                    "runtime_median_seconds": dense_timing["median"],
-                    "runtime_q1_seconds": dense_timing["q1"],
-                    "runtime_q3_seconds": dense_timing["q3"],
-                    "peak_traced_bytes": peak_bytes(
-                        lambda: dense_batch_risk_moments(
-                            y_train, cache.indices, probabilities, classes=[0, 1]
-                        )
-                    ),
-                    "expectation_estimate": dense.expectation,
-                    "variance_estimate": dense.variance,
-                },
-                {
-                    **common,
-                    "method": "shared_label_monte_carlo",
-                    "timing_repeats": mc_timing["repeats"],
-                    "timing_warmups": mc_timing["warmups"],
-                    "runtime_median_seconds": mc_timing["median"],
-                    "runtime_q1_seconds": mc_timing["q1"],
-                    "runtime_q3_seconds": mc_timing["q3"],
-                    "peak_traced_bytes": peak_bytes(
-                        lambda: monte_carlo_batch_risk(
-                            y_train,
-                            cache.indices,
-                            probabilities,
-                            repetitions=500,
-                            classes=[0, 1],
-                            seed=20261009 + q,
-                        )
-                    ),
-                    "monte_carlo_repetitions": 500,
-                    "expectation_estimate": float(np.mean(monte_carlo)),
-                    "variance_estimate": float(np.var(monte_carlo)),
-                    "expectation_absolute_error": abs(
-                        float(np.mean(monte_carlo)) - overlap.expectation
-                    ),
-                    "variance_absolute_error": abs(
-                        float(np.var(monte_carlo)) - overlap.variance
-                    ),
-                },
-            ]
+        append_probability_panel(
+            benchmark_family="shared_probability",
+            panel="random_geometry_scaling",
+            n=n,
+            q=q,
+            k=k,
+            neighbors=cache.indices,
+            y_train=y_train,
+            probabilities=probabilities,
+            seed=20261009 + q,
+            overlap_mode="random_geometry",
+            timing_repeats=2,
+            dense_repeats=2,
+            mc_repeats=3,
         )
 
     # Control 1: hold the training size at 1,280 while query count grows.

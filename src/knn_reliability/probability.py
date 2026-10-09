@@ -435,19 +435,24 @@ def query_overlap_pairs(neighbors: np.ndarray) -> np.ndarray:
     return np.asarray(sorted(pairs), dtype=int)
 
 
-def batch_risk_moments(
+def batch_risk_moments_variant(
     y_train: np.ndarray,
     neighbors: np.ndarray,
     flip_probabilities: Iterable[float],
     *,
     classes: Iterable[object] | None = None,
     tie_priority: Iterable[object] | None = None,
+    overlap_graph: bool = True,
+    factorized_joint: bool = True,
 ) -> BatchRiskMoments:
-    """Compute exact first two moments for binary batch risk.
+    """Compute exact binary batch moments under an explicit implementation variant.
 
-    The same prototype flip is shared by all queries.  Pairwise dynamic
-    programming therefore retains overlap-induced covariance instead of
-    assuming query independence.
+    ``overlap_graph`` controls whether the pair expansion scans only shared
+    neighborhoods or all query pairs.  ``factorized_joint`` selects the
+    shared/unique one-dimensional calculation or the retained two-dimensional
+    reference calculation for each pair.  The four combinations are used by
+    E9 to separate the benefit of graph sparsity from the benefit of the new
+    joint-probability factorization.
     """
 
     y_train = np.asarray(y_train)
@@ -461,83 +466,7 @@ def batch_risk_moments(
         raise ValueError("neighbors contain an invalid training index")
     labels, counts = counts_from_neighbors(y_train, neighbors, classes=classes)
     if len(labels) != 2:
-        raise ValueError("batch_risk_moments currently supports binary labels")
-    baseline, _ = predict_from_counts(counts, labels, tie_priority=tie_priority)
-    query_probabilities = np.array(
-        [
-                binary_flip_probability(
-                y_train[indices],
-                probabilities[indices],
-                classes=labels,
-                tie_priority=tie_priority,
-            )
-            for indices in neighbors
-        ],
-        dtype=float,
-    )
-    expectation = float(np.mean(query_probabilities))
-    n_queries = len(neighbors)
-    overlap_pairs = query_overlap_pairs(neighbors)
-    # Disjoint neighborhoods depend on disjoint independent flip variables,
-    # so their joint event probability is the product of their marginals.
-    total_pair_product = (
-        float(np.sum(query_probabilities)) ** 2
-        - float(np.dot(query_probabilities, query_probabilities))
-    ) / 2.0
-    overlap_product = 0.0
-    overlap_joint = 0.0
-    for left, right in overlap_pairs:
-        overlap_product += float(query_probabilities[left] * query_probabilities[right])
-        overlap_joint += factorized_joint_binary_flip_probability(
-            y_train[neighbors[left]],
-            y_train[neighbors[right]],
-            neighbors[left],
-            neighbors[right],
-            y_train,
-            probabilities,
-            classes=labels,
-            tie_priority=tie_priority,
-        )
-    second_numerator = float(np.sum(query_probabilities)) + 2.0 * (
-        total_pair_product - overlap_product + overlap_joint
-    )
-    second_moment = float(second_numerator / (n_queries * n_queries))
-    variance = max(0.0, second_moment - expectation * expectation)
-    return BatchRiskMoments(
-        query_probabilities,
-        expectation,
-        second_moment,
-        variance,
-        overlap_pairs,
-    )
-
-
-def dense_batch_risk_moments(
-    y_train: np.ndarray,
-    neighbors: np.ndarray,
-    flip_probabilities: Iterable[float],
-    *,
-    classes: Iterable[object] | None = None,
-    tie_priority: Iterable[object] | None = None,
-) -> BatchRiskMoments:
-    """Reference batch moments that runs the joint DP for every query pair.
-
-    This intentionally dense implementation is retained as an exact timing
-    and correctness reference for the overlap-graph decomposition.
-    """
-
-    y_train = np.asarray(y_train)
-    neighbors = np.asarray(neighbors, dtype=int)
-    probabilities = np.asarray(list(flip_probabilities), dtype=float)
-    if neighbors.ndim != 2 or len(neighbors) == 0:
-        raise ValueError("neighbors must be a non-empty two-dimensional array")
-    if len(probabilities) != len(y_train):
-        raise ValueError("flip_probabilities must match y_train")
-    if np.any(neighbors < 0) or np.any(neighbors >= len(y_train)):
-        raise ValueError("neighbors contain an invalid training index")
-    labels, counts = counts_from_neighbors(y_train, neighbors, classes=classes)
-    if len(labels) != 2:
-        raise ValueError("dense_batch_risk_moments currently supports binary labels")
+        raise ValueError("batch_risk_moments_variant currently supports binary labels")
     query_probabilities = np.array(
         [
             binary_flip_probability(
@@ -550,11 +479,40 @@ def dense_batch_risk_moments(
         ],
         dtype=float,
     )
+    expectation = float(np.mean(query_probabilities))
     n_queries = len(neighbors)
-    joint_sum = 0.0
-    for left in range(n_queries):
-        for right in range(left + 1, n_queries):
-            joint_sum += _joint_binary_flip_probability(
+    overlap_pairs = query_overlap_pairs(neighbors)
+    if overlap_graph:
+        pairs = overlap_pairs
+    else:
+        pairs = np.asarray(
+            [(left, right) for left in range(n_queries) for right in range(left + 1, n_queries)],
+            dtype=int,
+        )
+        if len(pairs) == 0:
+            pairs = np.empty((0, 2), dtype=int)
+
+    pair_sum = 0.0
+    neighbor_sets = [set(int(index) for index in row) for row in neighbors]
+    for left, right in pairs:
+        if factorized_joint and not (neighbor_sets[left] & neighbor_sets[right]):
+            # Dense 1D still scans this pair, but disjoint independent events
+            # have an exact marginal product and need no joint recurrence.
+            pair_sum += float(query_probabilities[left] * query_probabilities[right])
+            continue
+        if factorized_joint:
+            pair_sum += factorized_joint_binary_flip_probability(
+                y_train[neighbors[left]],
+                y_train[neighbors[right]],
+                neighbors[left],
+                neighbors[right],
+                y_train,
+                probabilities,
+                classes=labels,
+                tie_priority=tie_priority,
+            )
+        else:
+            pair_sum += _joint_binary_flip_probability(
                 y_train[neighbors[left]],
                 y_train[neighbors[right]],
                 neighbors[left],
@@ -564,18 +522,70 @@ def dense_batch_risk_moments(
                 labels,
                 tie_priority,
             )
-    expectation = float(np.mean(query_probabilities))
-    second_moment = float(
-        (float(np.sum(query_probabilities)) + 2.0 * joint_sum)
-        / (n_queries * n_queries)
-    )
+
+    if overlap_graph:
+        # Nonedges depend on disjoint independent flip coordinates and
+        # therefore contribute the product of their marginal probabilities.
+        total_pair_product = (
+            float(np.sum(query_probabilities)) ** 2
+            - float(np.dot(query_probabilities, query_probabilities))
+        ) / 2.0
+        overlap_product = float(
+            sum(query_probabilities[left] * query_probabilities[right] for left, right in overlap_pairs)
+        )
+        pair_sum = total_pair_product - overlap_product + pair_sum
+
+    second_numerator = float(np.sum(query_probabilities)) + 2.0 * pair_sum
+    second_moment = float(second_numerator / (n_queries * n_queries))
     variance = max(0.0, second_moment - expectation * expectation)
     return BatchRiskMoments(
         query_probabilities,
         expectation,
         second_moment,
         variance,
-        query_overlap_pairs(neighbors),
+        overlap_pairs,
+    )
+
+
+def batch_risk_moments(
+    y_train: np.ndarray,
+    neighbors: np.ndarray,
+    flip_probabilities: Iterable[float],
+    *,
+    classes: Iterable[object] | None = None,
+    tie_priority: Iterable[object] | None = None,
+) -> BatchRiskMoments:
+    """Compute exact moments with the production sparse one-dimensional path."""
+
+    return batch_risk_moments_variant(
+        y_train,
+        neighbors,
+        flip_probabilities,
+        classes=classes,
+        tie_priority=tie_priority,
+        overlap_graph=True,
+        factorized_joint=True,
+    )
+
+
+def dense_batch_risk_moments(
+    y_train: np.ndarray,
+    neighbors: np.ndarray,
+    flip_probabilities: Iterable[float],
+    *,
+    classes: Iterable[object] | None = None,
+    tie_priority: Iterable[object] | None = None,
+) -> BatchRiskMoments:
+    """Reference moments with dense pair scanning and the two-dimensional DP."""
+
+    return batch_risk_moments_variant(
+        y_train,
+        neighbors,
+        flip_probabilities,
+        classes=classes,
+        tie_priority=tie_priority,
+        overlap_graph=False,
+        factorized_joint=False,
     )
 
 

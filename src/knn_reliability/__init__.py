@@ -22,6 +22,7 @@ from .geometry import (
 from .knn import NeighborCache, build_neighbor_cache, predict_from_neighbors
 from .probability import (
     batch_risk_moments,
+    batch_risk_moments_variant,
     binary_flip_probability,
     dense_batch_risk_moments,
     enumerate_shared_flip_moments,
@@ -41,6 +42,7 @@ __all__ = [
     "NeighborCache",
     "binary_flip_probability",
     "batch_risk_moments",
+    "batch_risk_moments_variant",
     "dense_batch_risk_moments",
     "enumerate_shared_flip_moments",
     "factorized_joint_binary_flip_probability",

@@ -14,6 +14,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
+from knn_reliability.influence import compute_influence  # noqa: E402
 from knn_reliability.knn import build_neighbor_cache, predict_from_neighbors  # noqa: E402
 TABLE_DIR = ROOT / "results" / "processed"
 FIG_DIR = ROOT / "figures" / "export"
@@ -55,21 +56,27 @@ def fig1_framework() -> None:
 
     fig, axes = plt.subplots(1, 3, figsize=(12.6, 3.8), gridspec_kw={"width_ratios": [1, 1, 1.05]})
     colors = {0: "#377eb8", 1: "#d95f02"}
+    diagonal = float(2**-0.5)
     points = np.array([
-        [-2.00, -0.15], [-1.80, 0.05], [-1.60, -0.05],
-        [0.20, 0.05], [0.40, -0.05], [0.60, 0.15],
+        [0.90 * diagonal, 0.90 * diagonal], [-0.90 * diagonal, -0.90 * diagonal],
+        [0.00, 0.95], [0.00, -0.95], [0.95, 0.00], [-0.95, 0.00],
+        [1.10 * diagonal, 1.10 * diagonal], [1.15 * diagonal, 1.15 * diagonal],
+        [-1.10 * diagonal, -1.10 * diagonal], [-1.15 * diagonal, -1.15 * diagonal],
+        [0.00, 1.10], [0.00, 1.15], [0.00, -1.10], [0.00, -1.15],
+        [1.10, 0.00], [1.15, 0.00], [-1.10, 0.00], [-1.15, 0.00],
     ])
-    labels = np.array([0, 0, 0, 1, 1, 1])
-    query = np.array([[-0.90, 0.00]])
+    labels = np.array([0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1])
+    query_batch = np.array([[0.00, 0.02], [0.00, -0.02], [0.02, 0.00], [-0.02, 0.00]])
+    query = query_batch[:1]
     k = 3
-    query_cache = build_neighbor_cache(points, query, k)
+    query_cache = build_neighbor_cache(points, query_batch, k)
     base_prediction, base_counts, _ = predict_from_neighbors(
         labels, query_cache.indices, classes=[0, 1]
     )
     changed_labels = labels.copy()
-    changed_labels[2] = 1
+    changed_labels[0] = 1
     relabel_prediction, relabel_counts, _ = predict_from_neighbors(
-        changed_labels, build_neighbor_cache(points, query, k).indices, classes=[0, 1]
+        changed_labels, query_cache.indices, classes=[0, 1]
     )
     loo_predictions = []
     for index in range(len(points)):
@@ -88,12 +95,18 @@ def fig1_framework() -> None:
     _, loo_counts, _ = predict_from_neighbors(
         np.delete(labels, 2), loo_neighbor_cache.indices, classes=[0, 1]
     )
-    assert int(base_prediction[0]) == 0
+    influence_result = compute_influence(labels, query_cache.indices, classes=[0, 1])
+    influence_matrix = influence_result.decisive_matrix.astype(float)
+    assert influence_matrix.shape == (4, 18)
+    assert np.all(influence_matrix.sum(axis=1) == 2)
+    assert np.all(influence_matrix[:, :2] == 1)
+    assert np.all(influence_matrix[:, 2:] == 0)
+    assert np.all(base_prediction == 0)
     assert loo_correct == len(points)
     assert int(relabel_prediction[0]) == 1
     axes[0].scatter(points[:, 0], points[:, 1], s=60,
                     c=[colors[int(y)] for y in labels], edgecolor="white", linewidth=0.7)
-    axes[0].scatter(points[2, 0], points[2, 1], s=95, facecolors="none",
+    axes[0].scatter(points[0, 0], points[0, 1], s=95, facecolors="none",
                     edgecolors="#777777", linewidth=1.2, zorder=3)
     axes[0].scatter(*query[0], marker="*", s=145, c="black", zorder=4)
     for neighbor_index in query_cache.indices[0]:
@@ -122,7 +135,7 @@ def fig1_framework() -> None:
         )
     for index, (x, y) in enumerate(points, start=1):
         axes[1].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=9)
-    axes[1].annotate("$z_3$: 0 $\\to$ 1", xy=points[2], xytext=(-1.48, 0.34),
+    axes[1].annotate("$z_1$: 0 $\\to$ 1", xy=points[0], xytext=(0.18, 1.22),
                      arrowprops={"arrowstyle": "->", "color": "#984ea3"}, color="#984ea3", fontsize=9)
     axes[1].text(
         0.5, 0.05,
@@ -131,23 +144,15 @@ def fig1_framework() -> None:
         transform=axes[1].transAxes, ha="center", va="bottom", fontsize=8.5,
     )
     panel_label(axes[1], "b")
-    # A compact influence-incidence view makes the batch-level extension
-    # visible: shared columns correspond to prototypes reused by several
-    # queries, whereas the remaining columns are query-specific directions.
-    influence_matrix = np.array(
-        [[1, 1, 1, 0, 0, 0],
-         [1, 1, 0, 1, 0, 0],
-         [1, 1, 0, 0, 1, 0],
-         [1, 1, 0, 0, 0, 1]],
-        dtype=float,
-    )
+    # The matrix is generated from the same four-query classifier object as
+    # panels (a) and (b), rather than entered as a visual schematic.
     image = axes[2].imshow(influence_matrix, cmap="Blues", vmin=0, vmax=1, aspect="auto")
-    axes[2].set_xticks(range(6), ["p1", "p2", "p3", "p4", "p5", "p6"])
+    axes[2].set_xticks(range(len(points)), [f"p{i}" for i in range(1, len(points) + 1)], rotation=65)
     axes[2].set_yticks(range(4), ["q1", "q2", "q3", "q4"])
     axes[2].set_xlabel("training prototype", fontsize=8)
     axes[2].set_ylabel("query", fontsize=8)
-    axes[2].set_title("shared influence columns", fontsize=8.5)
-    axes[2].tick_params(labelsize=7)
+    axes[2].set_title("computed decisive influence", fontsize=8.5)
+    axes[2].tick_params(labelsize=6)
     for row in range(influence_matrix.shape[0]):
         for column in range(influence_matrix.shape[1]):
             if influence_matrix[row, column] > 0:
@@ -170,18 +175,28 @@ def fig1_framework() -> None:
             spine.set_color("#bbbbbb")
     for spine in axes[2].spines.values():
         spine.set_color("#bbbbbb")
+    write_panel("fig1_influence_matrix.csv", [
+        {"query_id": query_index + 1, "prototype_id": prototype_index + 1,
+         "influence": int(influence_matrix[query_index, prototype_index]),
+         "decisive_count": int(influence_matrix[query_index].sum()), "k": k,
+         "n_query": len(query_batch), "n_train": len(points)}
+        for query_index in range(len(query_batch))
+        for prototype_index in range(len(points))
+    ])
     write_panel("fig1_revision_framework_panels.csv", [
         {"panel": "a", "operation": "LOO at each training location", "k": k,
          "base_votes": ":".join(map(str, base_counts[0])), "changed_votes": "",
          "base_prediction": int(base_prediction[0]), "changed_prediction": "",
-         "loo_correct": loo_correct, "loo_total": len(points), "query_type": "independent"},
-        {"panel": "b", "operation": "retained prototype relabeling z3", "k": k,
+         "loo_correct": loo_correct, "loo_total": len(points), "query_type": "query_1_of_shared_batch"},
+        {"panel": "b", "operation": "retained prototype relabeling z1", "k": k,
          "base_votes": ":".join(map(str, base_counts[0])), "changed_votes": ":".join(map(str, relabel_counts[0])),
          "base_prediction": int(base_prediction[0]), "changed_prediction": int(relabel_prediction[0]),
-         "loo_correct": loo_correct, "loo_total": len(points), "query_type": "independent"},
+         "loo_correct": loo_correct, "loo_total": len(points), "query_type": "query_1_of_shared_batch"},
         {"panel": "c", "operation": "shared batch influence incidence",
-         "k": 3, "shared_prototypes": 2, "query_count": 4,
-         "matrix_rows": 4, "matrix_columns": 6, "query_type": "shared_batch"},
+         "k": k, "shared_prototypes": 2, "query_count": len(query_batch),
+         "matrix_rows": influence_matrix.shape[0], "matrix_columns": influence_matrix.shape[1],
+         "decisive_count_per_query": ":".join(map(str, influence_matrix.sum(axis=1).astype(int))),
+         "query_type": "shared_batch_actual"},
     ])
     save(fig, "fig1_revision_framework")
 
@@ -297,19 +312,59 @@ def fig3_probability() -> None:
     controlled_by_name = {}
     for row in controlled:
         controlled_by_name.setdefault(row["pair_member"], row)
-    names = ["shared", "distributed"]
-    coefficients = [float(controlled_by_name[name]["variance_coefficient"]) for name in names]
-    bars = axes[1, 1].bar(names, coefficients, color=["#377eb8", "#d95f02"], width=0.62)
-    axes[1, 1].set(xlabel="same $k=3$, $q=4$, $R_{\\mathrm{point}}=1$",
-                    ylabel="first-order variance coefficient")
-    for bar, name in zip(bars, names):
-        row = controlled_by_name[name]
-        axes[1, 1].text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height(),
-            f"$H_2$={float(row['H2']):.3f}",
-            ha="center", va="bottom", fontsize=8,
-        )
+    shared_y = np.array([0, 0, 1, 1, 1, 1], dtype=int)
+    shared_neighbors = np.array([[0, 1, 2], [0, 1, 3], [0, 1, 4], [0, 1, 5]], dtype=int)
+    distributed_y = np.tile(np.array([0, 0, 1], dtype=int), 4)
+    distributed_neighbors = np.arange(12, dtype=int).reshape(4, 3)
+    shared_matrix = compute_influence(shared_y, shared_neighbors, classes=[0, 1]).decisive_matrix.astype(int)
+    distributed_matrix = compute_influence(
+        distributed_y, distributed_neighbors, classes=[0, 1]
+    ).decisive_matrix.astype(int)
+    assert np.array_equal(shared_matrix, np.array([[1, 1, 0, 0, 0, 0]] * 4))
+    expected_distributed = np.zeros((4, 12), dtype=int)
+    for query_index in range(4):
+        expected_distributed[query_index, 3 * query_index:3 * query_index + 2] = 1
+    assert np.array_equal(distributed_matrix, expected_distributed)
+    write_panel("fig4_influence_matrices.csv", [
+        *[
+            {"structure": "shared", "query_id": q + 1, "prototype_id": p + 1,
+             "influence": int(shared_matrix[q, p]), "decisive_count": int(shared_matrix[q].sum()),
+             "k": 3, "n_query": 4, "Rpoint": 1.0}
+            for q in range(shared_matrix.shape[0]) for p in range(shared_matrix.shape[1])
+        ],
+        *[
+            {"structure": "distributed", "query_id": q + 1, "prototype_id": p + 1,
+             "influence": int(distributed_matrix[q, p]), "decisive_count": int(distributed_matrix[q].sum()),
+             "k": 3, "n_query": 4, "Rpoint": 1.0}
+            for q in range(distributed_matrix.shape[0]) for p in range(distributed_matrix.shape[1])
+        ],
+    ])
+    axis = axes[1, 1]
+    axis.clear()
+    axis.set_axis_off()
+    for inset, matrix, title, color in (
+        ([0.02, 0.37, 0.45, 0.53], shared_matrix, "shared", "Blues"),
+        ([0.53, 0.37, 0.45, 0.53], distributed_matrix, "distributed", "Oranges"),
+    ):
+        matrix_axis = axis.inset_axes(inset)
+        matrix_axis.imshow(matrix, cmap=color, vmin=0, vmax=1, aspect="auto")
+        matrix_axis.set_title(title, fontsize=8)
+        matrix_axis.set_xticks([])
+        matrix_axis.set_yticks(range(4), ["q1", "q2", "q3", "q4"], fontsize=6)
+        for row_index in range(matrix.shape[0]):
+            for column_index in range(matrix.shape[1]):
+                if matrix[row_index, column_index]:
+                    matrix_axis.text(column_index, row_index, "1", ha="center", va="center", fontsize=6)
+    shared_row = controlled_by_name["shared"]
+    distributed_row = controlled_by_name["distributed"]
+    axis.text(
+        0.5, 0.18,
+        f"same $k=3$, $q=4$, $R_{{\\mathrm{{point}}}}=1$;  shared $H_2$={float(shared_row['H2']):.3f}, "
+        f"$c^2H_2$={float(shared_row['variance_coefficient']):.3f};  distributed "
+        f"$H_2$={float(distributed_row['H2']):.3f}, $c^2H_2$={float(distributed_row['variance_coefficient']):.3f}",
+        ha="center", va="center", fontsize=7,
+    )
+    axis.text(0.5, 0.03, "rows: queries; columns: decisive prototypes", ha="center", fontsize=7)
     panel_label(axes[1, 1], "d")
     fig.colorbar(axes[0, 0].collections[0], ax=axes[0, 0], label="k", fraction=0.046, pad=0.04)
     write_panel("fig4_probability_panels.csv", [
@@ -397,12 +452,23 @@ def fig6_operations() -> None:
             "shared_probability_fixed_train",
             "shared_probability_overlap_sweep",
         }
-        and row.get("method") in {"overlap_graph_exact", "dense_pairwise_exact"}
+        and row.get("method") in {
+            "sparse_1d_exact", "sparse_2d_exact", "dense_1d_exact", "dense_2d_exact"
+        }
     ]
     ties = read_csv("e7_tie_weight_imbalance.csv")
     geometry = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "relabel_plus_radial_displacement"]
     boundary = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "vote_gap_stratified_boundary_motion"]
-    curve = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "four_state_motion_probability_curve"]
+    curve = [
+        r for r in read_csv("e6_geometry_construction.csv")
+        if r.get("perturbation") == "four_state_motion_probability_curve"
+        and r.get("candidate_label_mode", "0") == "0"
+    ]
+    curve_candidate_control = [
+        r for r in read_csv("e6_geometry_construction.csv")
+        if r.get("perturbation") == "four_state_motion_probability_curve"
+        and r.get("candidate_label_mode") == "1"
+    ]
     weighted = [r for r in ties if r.get("policy") == "weighted_vote"]
     fig, axes = plt.subplots(2, 3, figsize=(11.4, 6.3))
     axes = axes.ravel()
@@ -433,8 +499,20 @@ def fig6_operations() -> None:
                 [float(r["candidate_in_neighbor_rate"]) for r in subset],
                 "-.", color=color, alpha=0.35, lw=0.8,
             )
+            control_subset = sorted(
+                [r for r in curve_candidate_control if r["boundary_gap"] == boundary_gap],
+                key=lambda row: float(row["delta"]),
+            )
+            axes[0].plot(
+                [float(r["delta"]) for r in control_subset],
+                [float(r["geometry_prediction_changed_rate"]) for r in control_subset],
+                "--", color="#555555", alpha=0.25, lw=0.8,
+                label="geometry, candidate-label control"
+                if boundary_gap == sorted({r["boundary_gap"] for r in curve}, key=float)[0]
+                else None,
+            )
         axes[0].text(
-            0.98, 0.04, "solid: label-only; dashed: geometry-only\ndotted: joint; dash-dot: candidate enters",
+            0.98, 0.04, "solid: label-only; dashed: geometry-only\ndotted: joint; dash-dot: candidate enters; gray: label-1 control",
             transform=axes[0].transAxes, ha="right", va="bottom", fontsize=6.5,
         )
         axes[0].set(xlabel="moved-prototype displacement $\\delta$", ylabel="prediction-change probability")
@@ -461,36 +539,44 @@ def fig6_operations() -> None:
     panel_label(axes[2], "c")
     axes[2].legend(frameon=False, fontsize=7)
     fixed = [r for r in probability if r.get("benchmark_family") == "shared_probability_fixed_train"]
-    fixed_overlap = {int(r["n_query"]): r for r in fixed if r["method"] == "overlap_graph_exact"}
-    fixed_dense = {int(r["n_query"]): r for r in fixed if r["method"] == "dense_pairwise_exact"}
-    fixed_q = sorted(set(fixed_overlap) & set(fixed_dense))
+    fixed_sparse = {int(r["n_query"]): r for r in fixed if r["method"] == "sparse_1d_exact"}
+    fixed_dense = {int(r["n_query"]): r for r in fixed if r["method"] == "dense_2d_exact"}
+    fixed_q = sorted(set(fixed_sparse) & set(fixed_dense))
     fixed_speedups = [
         float(fixed_dense[q]["runtime_median_seconds"])
-        / float(fixed_overlap[q]["runtime_median_seconds"])
+        / float(fixed_sparse[q]["runtime_median_seconds"])
         for q in fixed_q
     ]
     sweep = [r for r in probability if r.get("benchmark_family") == "shared_probability_overlap_sweep"]
-    sweep_overlap = {r["overlap_mode"]: r for r in sweep if r["method"] == "overlap_graph_exact"}
-    sweep_dense = {r["overlap_mode"]: r for r in sweep if r["method"] == "dense_pairwise_exact"}
+    method_order = ["dense_2d_exact", "sparse_2d_exact", "dense_1d_exact", "sparse_1d_exact"]
+    method_labels = ["dense--2D", "sparse--2D", "dense--1D", "sparse--1D"]
+    sweep_by_method = {
+        method: {r["overlap_mode"]: r for r in sweep if r["method"] == method}
+        for method in method_order
+    }
     axes[3].plot(fixed_q, fixed_speedups, "o-", color="#377eb8")
-    axes[3].set(xlabel="query count (fixed $n=1280$)", ylabel="dense / overlap exact time")
+    axes[3].set(xlabel="query count (fixed $n=1280$)", ylabel="dense--2D / sparse--1D time")
     panel_label(axes[3], "d")
     axes[3].axhline(1.0, color="#555555", lw=0.8, ls=":")
-    if sweep_overlap and sweep_dense:
+    if all(sweep_by_method[method] for method in method_order):
         modes = ["disjoint", "block_shared", "chain", "fully_shared"]
-        edge_values = [float(sweep_overlap[m]["overlap_pair_fraction"]) for m in modes]
-        speed_values = [
-            float(sweep_dense[m]["runtime_median_seconds"])
-            / float(sweep_overlap[m]["runtime_median_seconds"])
-            for m in modes
-        ]
         positions = np.arange(len(modes))
-        axes[4].bar(positions, speed_values, color="#d95f02", width=0.72)
+        width = 0.18
+        baseline = sweep_by_method["sparse_1d_exact"]
+        colors = ["#222222", "#377eb8", "#d95f02", "#66a61e"]
+        for offset, method, label, color in zip(
+            (-1.5, -0.5, 0.5, 1.5), method_order, method_labels, colors
+        ):
+            values = [
+                float(sweep_by_method[method][mode]["runtime_median_seconds"])
+                / float(baseline[mode]["runtime_median_seconds"])
+                for mode in modes
+            ]
+            axes[4].bar(positions + offset * width, values, color=color, width=width, label=label)
         axes[4].set_xticks(positions, [m.replace("_", " ") for m in modes], rotation=30, ha="right", fontsize=7)
-        axes[4].set(xlabel="query-overlap pattern", ylabel="dense / overlap exact time")
+        axes[4].set(xlabel="query-overlap pattern", ylabel="runtime / sparse--1D")
         axes[4].axhline(1.0, color="#555555", lw=0.8, ls=":")
-        for position, speed, edge in zip(positions, speed_values, edge_values):
-            axes[4].text(position, speed, f"edge {edge:.2f}", ha="center", va="bottom", fontsize=7)
+        axes[4].legend(frameon=False, fontsize=5.8, ncol=2, loc="upper left")
     else:
         axes[4].set_axis_off()
     panel_label(axes[4], "e")
