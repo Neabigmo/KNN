@@ -6,6 +6,7 @@ from knn_reliability.knn import predict_from_counts
 from knn_reliability.probability import (
     batch_risk_moments,
     binary_flip_probability,
+    dense_batch_risk_moments,
     first_order_risk,
     monte_carlo_batch_risk,
     poisson_binomial_pmf,
@@ -84,3 +85,14 @@ def test_disjoint_batch_pairs_use_marginal_products():
     p0, p1 = moments.query_probabilities
     expected_variance = (p0 * (1.0 - p0) + p1 * (1.0 - p1)) / 4.0
     np.testing.assert_allclose(moments.variance, expected_variance)
+
+
+def test_overlap_graph_matches_dense_pairwise_reference():
+    y_train = np.array([0, 0, 1, 1, 0, 1])
+    neighbors = np.array([[0, 1, 2], [1, 2, 3], [3, 4, 5], [0, 4, 5]])
+    probabilities = np.linspace(0.01, 0.12, len(y_train))
+    sparse = batch_risk_moments(y_train, neighbors, probabilities, classes=[0, 1])
+    dense = dense_batch_risk_moments(y_train, neighbors, probabilities, classes=[0, 1])
+    np.testing.assert_allclose(sparse.query_probabilities, dense.query_probabilities)
+    np.testing.assert_allclose(sparse.expectation, dense.expectation, atol=1e-14)
+    np.testing.assert_allclose(sparse.variance, dense.variance, atol=1e-14)

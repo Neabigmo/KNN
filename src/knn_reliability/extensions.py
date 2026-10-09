@@ -16,7 +16,12 @@ def weighted_predict_from_neighbors(
     tie_priority: Iterable[object] | None = None,
     power: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Predict with inverse-distance votes, with exact zero-distance handling."""
+    """Predict with inverse-distance votes, with exact zero-distance handling.
+
+    ``power=0`` is the unweighted rule, including when a query coincides with
+    a training point.  For positive powers, any zero-distance neighbors take
+    priority and share equal weight.
+    """
 
     y_train = np.asarray(y_train)
     neighbors = np.asarray(neighbors, dtype=int)
@@ -36,7 +41,9 @@ def weighted_predict_from_neighbors(
     scores = np.zeros((len(neighbors), len(labels)), dtype=float)
     for row in range(len(neighbors)):
         row_distances = distances[row]
-        if np.any(row_distances == 0):
+        if power == 0:
+            weights = np.ones_like(row_distances)
+        elif np.any(row_distances == 0):
             weights = (row_distances == 0).astype(float)
         else:
             weights = 1.0 / np.power(row_distances, power)

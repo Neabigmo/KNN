@@ -23,6 +23,7 @@ from .knn import NeighborCache, build_neighbor_cache, predict_from_neighbors
 from .probability import (
     batch_risk_moments,
     binary_flip_probability,
+    dense_batch_risk_moments,
     first_order_risk,
     monte_carlo_perfectly_correlated_batch_risk,
     monte_carlo_batch_risk,
@@ -37,6 +38,7 @@ __all__ = [
     "NeighborCache",
     "binary_flip_probability",
     "batch_risk_moments",
+    "dense_batch_risk_moments",
     "build_neighbor_cache",
     "class_stratified_change_metrics",
     "compute_classwise_influence",

@@ -315,6 +315,73 @@ def batch_risk_moments(
     )
 
 
+def dense_batch_risk_moments(
+    y_train: np.ndarray,
+    neighbors: np.ndarray,
+    flip_probabilities: Iterable[float],
+    *,
+    classes: Iterable[object] | None = None,
+    tie_priority: Iterable[object] | None = None,
+) -> BatchRiskMoments:
+    """Reference batch moments that runs the joint DP for every query pair.
+
+    This intentionally dense implementation is retained as an exact timing
+    and correctness reference for the overlap-graph decomposition.
+    """
+
+    y_train = np.asarray(y_train)
+    neighbors = np.asarray(neighbors, dtype=int)
+    probabilities = np.asarray(list(flip_probabilities), dtype=float)
+    if neighbors.ndim != 2 or len(neighbors) == 0:
+        raise ValueError("neighbors must be a non-empty two-dimensional array")
+    if len(probabilities) != len(y_train):
+        raise ValueError("flip_probabilities must match y_train")
+    if np.any(neighbors < 0) or np.any(neighbors >= len(y_train)):
+        raise ValueError("neighbors contain an invalid training index")
+    labels, counts = counts_from_neighbors(y_train, neighbors, classes=classes)
+    if len(labels) != 2:
+        raise ValueError("dense_batch_risk_moments currently supports binary labels")
+    query_probabilities = np.array(
+        [
+            binary_flip_probability(
+                y_train[indices],
+                probabilities[indices],
+                classes=labels,
+                tie_priority=tie_priority,
+            )
+            for indices in neighbors
+        ],
+        dtype=float,
+    )
+    n_queries = len(neighbors)
+    joint_sum = 0.0
+    for left in range(n_queries):
+        for right in range(left + 1, n_queries):
+            joint_sum += _joint_binary_flip_probability(
+                y_train[neighbors[left]],
+                y_train[neighbors[right]],
+                neighbors[left],
+                neighbors[right],
+                y_train,
+                probabilities,
+                labels,
+                tie_priority,
+            )
+    expectation = float(np.mean(query_probabilities))
+    second_moment = float(
+        (float(np.sum(query_probabilities)) + 2.0 * joint_sum)
+        / (n_queries * n_queries)
+    )
+    variance = max(0.0, second_moment - expectation * expectation)
+    return BatchRiskMoments(
+        query_probabilities,
+        expectation,
+        second_moment,
+        variance,
+        query_overlap_pairs(neighbors),
+    )
+
+
 def monte_carlo_batch_risk(
     y_train: np.ndarray,
     neighbors: np.ndarray,

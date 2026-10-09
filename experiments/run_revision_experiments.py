@@ -15,6 +15,7 @@ import math
 import os
 import sys
 import time
+import tracemalloc
 from pathlib import Path
 
 import numpy as np
@@ -50,6 +51,7 @@ from knn_reliability.knn import (  # noqa: E402
 from knn_reliability.probability import (  # noqa: E402
     batch_risk_moments,
     binary_flip_probability,
+    dense_batch_risk_moments,
     first_order_risk,
     monte_carlo_batch_risk,
     monte_carlo_perfectly_correlated_batch_risk,
@@ -1098,6 +1100,7 @@ def run_e7() -> None:
     ):
         labels, counts = counts_from_neighbors(y_train, neighbors, classes=np.unique(y_train))
         distribution = random_tie_distribution(counts, labels)[0]
+        deterministic, _ = predict_from_counts(counts, labels, tie_priority=labels)
         rows.append(
             {
                 "case": case,
@@ -1108,6 +1111,39 @@ def run_e7() -> None:
                 "deterministic_priority_prediction": int(labels[0]),
             }
         )
+        for train_index in range(len(y_train)):
+            for replacement in labels:
+                if replacement == y_train[train_index]:
+                    continue
+                changed = y_train.copy()
+                changed[train_index] = replacement
+                _, changed_counts = counts_from_neighbors(changed, neighbors, classes=labels)
+                changed_distribution = random_tie_distribution(changed_counts, labels)[0]
+                changed_deterministic, _ = predict_from_counts(
+                    changed_counts, labels, tie_priority=labels
+                )
+                rows.append(
+                    {
+                        "case": case,
+                        "policy": "random_tie_relabel",
+                        "k": len(neighbors[0]),
+                        "train_index": train_index,
+                        "old_label": int(y_train[train_index]),
+                        "replacement_label": int(replacement),
+                        "before_probabilities": ":".join(
+                            f"{value:.6f}" for value in distribution
+                        ),
+                        "after_probabilities": ":".join(
+                            f"{value:.6f}" for value in changed_distribution
+                        ),
+                        "total_variation_distance": float(
+                            0.5 * np.sum(np.abs(distribution - changed_distribution))
+                        ),
+                        "deterministic_prediction_changed": bool(
+                            changed_deterministic[0] != deterministic[0]
+                        ),
+                    }
+                )
 
     y_train = np.array([0, 1, 0, 1])
     neighbors = np.array([[0, 1, 2, 3]])
@@ -1223,6 +1259,34 @@ def run_e8() -> None:
 
 
 def run_e9() -> None:
+    def timed(callable_, *, repeats: int, warmups: int = 1):
+        for _ in range(warmups):
+            callable_()
+        durations = []
+        result = None
+        for _ in range(repeats):
+            start = time.perf_counter()
+            result = callable_()
+            durations.append(time.perf_counter() - start)
+        values = np.asarray(durations, dtype=float)
+        return result, {
+            "repeats": repeats,
+            "warmups": warmups,
+            "median": float(np.median(values)),
+            "q1": float(np.quantile(values, 0.25)),
+            "q3": float(np.quantile(values, 0.75)),
+        }
+
+    def peak_bytes(callable_) -> int:
+        gc.collect()
+        tracemalloc.start()
+        try:
+            callable_()
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        return int(peak)
+
     rows: list[dict[str, object]] = []
     rng = np.random.default_rng(20260614)
     for n in (80, 160, 320):
@@ -1231,39 +1295,175 @@ def run_e9() -> None:
         x_query = rng.normal(size=(q, 6))
         y_train = rng.integers(0, 2, size=n)
         for k in (3, 7):
-            start = time.perf_counter()
-            cache = build_neighbor_cache(x_train, x_query, k)
-            cache_seconds = time.perf_counter() - start
-            start = time.perf_counter()
-            fast = compute_influence(y_train, cache.indices, classes=[0, 1])
-            fast_seconds = time.perf_counter() - start
+            cache, cache_timing = timed(
+                lambda: build_neighbor_cache(x_train, x_query, k), repeats=7
+            )
+            fast, fast_timing = timed(
+                lambda: compute_influence(y_train, cache.indices, classes=[0, 1]),
+                repeats=7,
+            )
             naive_seconds = float("nan")
+            naive_q1 = float("nan")
+            naive_q3 = float("nan")
             naive_status = "not_executed_budget_policy"
             if n <= 160:
-                start = time.perf_counter()
-                slow = brute_force_directional_influence(
-                    y_train, cache.indices, classes=[0, 1]
+                slow, naive_timing = timed(
+                    lambda: brute_force_directional_influence(
+                        y_train, cache.indices, classes=[0, 1]
+                    ),
+                    repeats=5,
                 )
-                naive_seconds = time.perf_counter() - start
+                naive_seconds = naive_timing["median"]
+                naive_q1 = naive_timing["q1"]
+                naive_q3 = naive_timing["q3"]
                 if not np.array_equal(fast.directional_influence, slow):
                     raise RuntimeError("E9 fast and reference influence disagree")
                 naive_status = "completed"
             rows.append(
                 {
+                    "benchmark_family": "deterministic_influence",
+                    "method": "batched_vs_reference",
                     "n_train": n,
                     "n_query": q,
                     "k": k,
-                    "cache_seconds": cache_seconds,
-                    "exact_batched_seconds": fast_seconds,
+                    "timing_repeats": 7,
+                    "timing_warmups": 1,
+                    "cache_seconds": cache_timing["median"],
+                    "cache_q1_seconds": cache_timing["q1"],
+                    "cache_q3_seconds": cache_timing["q3"],
+                    "exact_batched_seconds": fast_timing["median"],
+                    "exact_batched_q1_seconds": fast_timing["q1"],
+                    "exact_batched_q3_seconds": fast_timing["q3"],
                     "naive_exhaustive_seconds": naive_seconds,
+                    "naive_exhaustive_q1_seconds": naive_q1,
+                    "naive_exhaustive_q3_seconds": naive_q3,
                     "naive_status": naive_status,
                     "speedup": (
-                        naive_seconds / fast_seconds
-                        if np.isfinite(naive_seconds) and fast_seconds > 0
+                        naive_seconds / fast_timing["median"]
+                        if np.isfinite(naive_seconds) and fast_timing["median"] > 0
                         else float("nan")
                     ),
                 }
             )
+
+    probability_rng = np.random.default_rng(20261009)
+    for q in (40, 80, 160, 320):
+        n = max(320, 4 * q)
+        k = 5
+        x_train = probability_rng.normal(size=(n, 6))
+        x_query = probability_rng.normal(size=(q, 6))
+        y_train = probability_rng.integers(0, 2, size=n)
+        probabilities = np.full(n, 0.05)
+        cache = build_neighbor_cache(x_train, x_query, k)
+
+        overlap, overlap_timing = timed(
+            lambda: batch_risk_moments(
+                y_train, cache.indices, probabilities, classes=[0, 1]
+            ),
+            repeats=5,
+        )
+        dense, dense_timing = timed(
+            lambda: dense_batch_risk_moments(
+                y_train, cache.indices, probabilities, classes=[0, 1]
+            ),
+            repeats=3,
+        )
+        if not np.allclose(
+            [overlap.expectation, overlap.variance],
+            [dense.expectation, dense.variance],
+            atol=1e-13,
+        ):
+            raise RuntimeError("E9 dense and overlap-graph batch moments disagree")
+        monte_carlo, mc_timing = timed(
+            lambda: monte_carlo_batch_risk(
+                y_train,
+                cache.indices,
+                probabilities,
+                repetitions=500,
+                classes=[0, 1],
+                seed=20261009 + q,
+            ),
+            repeats=5,
+        )
+        common = {
+            "benchmark_family": "shared_probability",
+            "n_train": n,
+            "n_query": q,
+            "k": k,
+            "overlap_pair_count": overlap.overlap_pair_count,
+            "total_query_pairs": overlap.total_query_pairs,
+            "overlap_pair_fraction": (
+                overlap.overlap_pair_count / overlap.total_query_pairs
+                if overlap.total_query_pairs
+                else 0.0
+            ),
+            "exact_expectation": overlap.expectation,
+            "exact_variance": overlap.variance,
+        }
+        rows.extend(
+            [
+                {
+                    **common,
+                    "method": "overlap_graph_exact",
+                    "timing_repeats": overlap_timing["repeats"],
+                    "timing_warmups": overlap_timing["warmups"],
+                    "runtime_median_seconds": overlap_timing["median"],
+                    "runtime_q1_seconds": overlap_timing["q1"],
+                    "runtime_q3_seconds": overlap_timing["q3"],
+                    "peak_traced_bytes": peak_bytes(
+                        lambda: batch_risk_moments(
+                            y_train, cache.indices, probabilities, classes=[0, 1]
+                        )
+                    ),
+                    "expectation_estimate": overlap.expectation,
+                    "variance_estimate": overlap.variance,
+                },
+                {
+                    **common,
+                    "method": "dense_pairwise_exact",
+                    "timing_repeats": dense_timing["repeats"],
+                    "timing_warmups": dense_timing["warmups"],
+                    "runtime_median_seconds": dense_timing["median"],
+                    "runtime_q1_seconds": dense_timing["q1"],
+                    "runtime_q3_seconds": dense_timing["q3"],
+                    "peak_traced_bytes": peak_bytes(
+                        lambda: dense_batch_risk_moments(
+                            y_train, cache.indices, probabilities, classes=[0, 1]
+                        )
+                    ),
+                    "expectation_estimate": dense.expectation,
+                    "variance_estimate": dense.variance,
+                },
+                {
+                    **common,
+                    "method": "shared_label_monte_carlo",
+                    "timing_repeats": mc_timing["repeats"],
+                    "timing_warmups": mc_timing["warmups"],
+                    "runtime_median_seconds": mc_timing["median"],
+                    "runtime_q1_seconds": mc_timing["q1"],
+                    "runtime_q3_seconds": mc_timing["q3"],
+                    "peak_traced_bytes": peak_bytes(
+                        lambda: monte_carlo_batch_risk(
+                            y_train,
+                            cache.indices,
+                            probabilities,
+                            repetitions=500,
+                            classes=[0, 1],
+                            seed=20261009 + q,
+                        )
+                    ),
+                    "monte_carlo_repetitions": 500,
+                    "expectation_estimate": float(np.mean(monte_carlo)),
+                    "variance_estimate": float(np.var(monte_carlo)),
+                    "expectation_absolute_error": abs(
+                        float(np.mean(monte_carlo)) - overlap.expectation
+                    ),
+                    "variance_absolute_error": abs(
+                        float(np.var(monte_carlo)) - overlap.variance
+                    ),
+                },
+            ]
+        )
     save_csv(PROCESSED_DIR / "e9_runtime.csv", rows)
 
 

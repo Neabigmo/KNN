@@ -53,7 +53,7 @@ def save(fig: plt.Figure, stem: str) -> None:
 def fig1_framework() -> None:
     """Show correct LOO decisions alongside a retained-prototype flip."""
 
-    fig, axes = plt.subplots(1, 2, figsize=(8.0, 3.1))
+    fig, axes = plt.subplots(1, 2, figsize=(9.2, 3.2))
     colors = {0: "#377eb8", 1: "#d95f02"}
     points = np.array([
         [-2.00, -0.15], [-1.80, 0.05], [-1.60, -0.05],
@@ -62,8 +62,9 @@ def fig1_framework() -> None:
     labels = np.array([0, 0, 0, 1, 1, 1])
     query = np.array([[-0.90, 0.00]])
     k = 3
+    query_cache = build_neighbor_cache(points, query, k)
     base_prediction, base_counts, _ = predict_from_neighbors(
-        labels, build_neighbor_cache(points, query, k).indices, classes=[0, 1]
+        labels, query_cache.indices, classes=[0, 1]
     )
     changed_labels = labels.copy()
     changed_labels[2] = 1
@@ -95,23 +96,42 @@ def fig1_framework() -> None:
     axes[0].scatter(points[2, 0], points[2, 1], s=75, facecolors="none",
                     edgecolors="#777777", linewidth=1.2, zorder=3)
     axes[0].scatter(*query[0], marker="*", s=120, c="black", zorder=4)
+    for neighbor_index in query_cache.indices[0]:
+        axes[0].plot(
+            [query[0, 0], points[neighbor_index, 0]],
+            [query[0, 1], points[neighbor_index, 1]],
+            color="#999999", lw=0.8, ls="--", zorder=0,
+        )
     for index, (x, y) in enumerate(points, start=1):
         axes[0].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=8)
-    axes[0].text(0.04, 0.95, f"LOO at each training location\ncorrect: {loo_correct}/{len(points)}\nindependent query: class {int(base_prediction[0])}",
-                 transform=axes[0].transAxes, va="top", fontsize=7.5,
-                 bbox={"facecolor": "white", "edgecolor": "#aaaaaa", "pad": 2})
+    axes[0].set_title(f"All training-point LOO predictions correct ({loo_correct}/{len(points)})")
+    axes[0].text(
+        0.5, 0.05,
+        f"independent query votes {base_counts[0].tolist()} $\\rightarrow$ class {int(base_prediction[0])}",
+        transform=axes[0].transAxes, ha="center", va="bottom", fontsize=8,
+    )
     panel_label(axes[0], "a")
 
     axes[1].scatter(points[:, 0], points[:, 1], s=45,
                     c=[colors[int(y)] for y in changed_labels], edgecolor="white", linewidth=0.7)
     axes[1].scatter(*query[0], marker="*", s=120, c="black", zorder=4)
+    for neighbor_index in query_cache.indices[0]:
+        axes[1].plot(
+            [query[0, 0], points[neighbor_index, 0]],
+            [query[0, 1], points[neighbor_index, 1]],
+            color="#999999", lw=0.8, ls="--", zorder=0,
+        )
     for index, (x, y) in enumerate(points, start=1):
         axes[1].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=8)
-    axes[1].annotate("$z_3$: 0 $\\to$ 1", xy=points[2], xytext=(-1.55, -0.62),
+    axes[1].annotate("$z_3$: 0 $\\to$ 1", xy=points[2], xytext=(-1.48, 0.34),
                      arrowprops={"arrowstyle": "->", "color": "#984ea3"}, color="#984ea3", fontsize=8)
-    axes[1].text(0.04, 0.95, f"retained relabeling\nvotes = {relabel_counts[0].tolist()}\nprediction: {int(base_prediction[0])} $\\to$ {int(relabel_prediction[0])}",
-                 transform=axes[1].transAxes, va="top", fontsize=7.5,
-                 bbox={"facecolor": "white", "edgecolor": "#aaaaaa", "pad": 2})
+    axes[1].set_title("One retained-label replacement flips the query")
+    axes[1].text(
+        0.5, 0.05,
+        f"votes {base_counts[0].tolist()} $\\rightarrow$ {relabel_counts[0].tolist()}; "
+        f"class {int(base_prediction[0])} $\\rightarrow$ {int(relabel_prediction[0])}",
+        transform=axes[1].transAxes, ha="center", va="bottom", fontsize=8,
+    )
     panel_label(axes[1], "b")
     xmin = float(points[:, 0].min() - 0.35)
     xmax = float(points[:, 0].max() + 0.35)
@@ -244,11 +264,14 @@ def fig4_influence() -> None:
         ("point_prv", "$R_{\\mathrm{point}}$", "point vulnerability"),
         ("r1", "$R_1$", "global single-relabel risk"),
         ("influence_concentration", "influence concentration", "max prototype share"),
+        ("loo_error", "LOO error", "deleted-point recovery error"),
     ]
     k_values = sorted({int(row["k"]) for row in rows})
     summary_rows = []
-    fig, axes = plt.subplots(1, 3, figsize=(10.3, 3.0), sharex=True)
-    for axis, (field, ylabel, description), label in zip(axes, metrics, ("a", "b", "c")):
+    fig, axes = plt.subplots(2, 2, figsize=(8.2, 5.7), sharex=True)
+    for axis, (field, ylabel, description), label in zip(
+        axes.ravel(), metrics, ("a", "b", "c", "d")
+    ):
         means, errors = [], []
         for k_value in k_values:
             grouped = {}
@@ -301,7 +324,11 @@ def fig5_audit() -> None:
 
 
 def fig6_operations() -> None:
-    runtime = read_csv("e9_runtime.csv")
+    runtime = [
+        row
+        for row in read_csv("e9_runtime.csv")
+        if row.get("benchmark_family") == "deterministic_influence"
+    ]
     ties = read_csv("e7_tie_weight_imbalance.csv")
     geometry = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "relabel_plus_radial_displacement"]
     weighted = [r for r in ties if r.get("policy") == "weighted_vote"]
@@ -323,7 +350,11 @@ def fig6_operations() -> None:
     panel_label(axes[1], "b")
     axes[1].legend(frameon=False, fontsize=6.5)
     for k in sorted({int(r["k"]) for r in runtime}):
-        subset = [r for r in runtime if int(r["k"]) == k and r["speedup"] != "nan"]
+        subset = [
+            r
+            for r in runtime
+            if int(r["k"]) == k and r["speedup"] not in {"", "nan"}
+        ]
         axes[2].plot([int(r["n_train"]) for r in subset], [float(r["speedup"]) for r in subset], "o-", label=f"k={k}")
     axes[2].set(xlabel="training prototypes", ylabel="reference / exact time")
     panel_label(axes[2], "c")

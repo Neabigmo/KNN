@@ -1,0 +1,13 @@
+claim_id,statement,assumptions,proof_file,reference_class,status,exhaustive_check,numerical_check,manuscript_role,experiment
+C01,Exact multiclass replacement test via post-change counts,Fixed neighbor set; finite classes; deterministic tie priority,THEOREM_PROOFS.md,problem-specific exact consequence,PROVED,planned,passed unit tests,main theorem,E1
+C02,Gap > 2 cannot be flipped by one label replacement,All replacement classes allowed; fixed positions,THEOREM_PROOFS.md,problem-specific corollary,PROVED,planned,passed unit tests,screening lemma,E1
+C03,Binary odd-k pivotal identity sum_i I_i=((k+1)/2) sum_t V_t,Binary labels; odd k; distinct neighbors,THEOREM_PROOFS.md,known majority influence identity specialized to kNN,PROVED,passed,passed,main theorem,E1
+C04,((k+1)/(2n)) R_point <= R_1 <= R_point,Binary odd k; n training prototypes; same query set; same admissible opposite-label replacement,THEOREM_PROOFS.md,elementary incidence bound,PROVED,passed,passed,interpretation,E2
+C05,Error change is signed and not equal to prediction change,Known query labels; fixed replacement direction,THEOREM_PROOFS.md,definition/direct consequence,PROVED,planned,passed,application metric,E5
+C06,Poisson-binomial DP gives exact binary query flip probability,Independent label flips; fixed local labels; deterministic vote rule,THEOREM_PROOFS.md,standard probability recurrence,PROVED,passed,passed,main method,E3
+C07,First-order derivative at p=0 equals single-flip influence/q,Independent Bernoulli coordinates; differentiability at boundary,THEOREM_PROOFS.md,Boolean influence direct consequence,PROVED,planned,passed,probability method,E3
+C08,Shared-flip batch variance bounded by sum p_i(1-p_i)(d_i/q)^2,Independent prototype flips; d_i is a uniform structural effect bound,THEOREM_PROOFS.md,Efron-Stein application,PROVED,planned,passed,uncertainty bound,E3
+C09,Heterogeneous local concentration bound,Odd k; conditional independence; eta Lipschitz in neighborhood,THEOREM_PROOFS.md,Hoeffding direct application,PROVED,planned,passed,theory extension,E4
+C10,Central-ball two-dimensional ring/support construction,epsilon < 2 sin(pi/k)/3; k>=2; fixed tie priority,THEOREM_PROOFS.md,finite geometric construction,PROVED,planned,passed,construction,E6
+C11,Empirical PRV is monotone in k,No general assumptions,THEOREM_PROOFS.md,unsupported empirical claim,WITHDRAWN,not applicable,not asserted,none,E4
+C12,First-order risk approximates finite-p risk with a universal pairwise bound,No additional structural assumptions,THEOREM_PROOFS.md,unverified candidate,WITHDRAWN,not applicable,not asserted,none,E3

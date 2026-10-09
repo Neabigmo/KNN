@@ -49,3 +49,17 @@ def test_weighted_vote_handles_zero_distance_without_division_error():
     )
     assert prediction.tolist() == [0]
     np.testing.assert_allclose(scores, [[1.0, 0.0]])
+
+
+def test_weighted_power_zero_matches_unweighted_vote_at_zero_distance():
+    from knn_reliability.extensions import weighted_predict_from_neighbors
+
+    prediction, scores = weighted_predict_from_neighbors(
+        np.array([0, 1, 1]),
+        np.array([[0, 1, 2]]),
+        np.array([[0.0, 1.0, 1.0]]),
+        classes=[0, 1],
+        power=0,
+    )
+    assert prediction.tolist() == [1]
+    np.testing.assert_allclose(scores, [[1.0, 2.0]])
