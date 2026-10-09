@@ -1,0 +1,249 @@
+# Theorem Proofs and Scope
+
+This file is the mathematical contract for the revision implementation.  The
+classifier uses fixed training positions, stable distance/index ordering, a
+finite class set, and a deterministic class-priority order for ties.
+
+## Definitions
+
+Let `S = ((z_i, y_i))_{i=1}^n`, let `Q = {x_t}_{t=1}^q`, and let
+`N_k(x_t)` be the ordered k-neighbor index set.  A replacement `i -> c`
+changes only `y_i`, never `z_i`.  For a query, `v_a` is the number of votes
+for class `a`, and `pi(a)` is its tie-priority rank (smaller is preferred).
+
+The exact directional influence is
+
+`I_{i->c} = sum_t 1{h_{S^{i->c}}(x_t) != h_S(x_t)}`.
+
+The exact point vulnerability is the indicator that at least one allowed
+replacement direction changes the prediction.  These are different objects:
+point vulnerability permits a different direction at each query, whereas a
+global influence score fixes one prototype and one target class for the whole
+query batch.
+
+## Proposition 1: exact multiclass one-label test
+
+Assume a query has current winner `a`, with count `v_a`, and a prototype in
+the query neighborhood is changed from its current class `b` to `c != b`.
+Set `v'_b = v_b - 1`, `v'_c = v_c + 1`, and `v'_d = v_d` otherwise.  The
+prediction changes if and only if either
+
+1. `a` is not a maximizer of `v'`, or
+2. `a` is a maximizer of `v'` but some other maximizer has strictly smaller
+   priority rank than `a`.
+
+Equivalently, the prediction is unchanged if and only if
+
+`v'_a > max_{d != a} v'_d`, or
+`v'_a = max_{d != a} v'_d` and `pi(a) < min{pi(d): v'_d = v'_a, d != a}`.
+
+### Proof
+
+Only the two affected vote counts can change.  The deterministic classifier
+selects a maximum count and then the minimum priority rank among tied maxima.
+Applying this definition to `v'` gives exactly the two cases above.  No
+assumption about the number of classes, zero-count competitors, or parity of
+`k` is used.  If the allowed replacement set is restricted, the statement is
+evaluated only for those `c`; no margin shortcut is valid without that check.
+
+### Corollary: the two-vote screening band
+
+When every prototype in the current winning class may be changed to every
+other class, a one-label change cannot flip a query with top-two gap greater
+than two.  Gap one is always flippable by changing a winning vote to a
+second-place class.  Gap two is flippable exactly when the relevant tied
+post-change competitor precedes the old winner under `pi`.  The exact code
+still evaluates every allowed direction, because restricted replacement sets
+and non-winning-class changes are not covered by this shortcut.
+
+## Proposition 2: single-prototype motion certificate
+
+Under unweighted deterministic voting, move one training prototype to an
+arbitrary new position and change its label arbitrarily, while leaving every
+other prototype and the query fixed.  If the pre-perturbation top-two vote gap
+is strictly greater than two, the prediction cannot change.
+
+### Proof
+
+Only the moved prototype can enter or leave the ordered neighborhood.  Thus the
+post-change neighborhood differs by at most one member exchange, and the vote
+vector is changed by at most one vote replacement.  The old winner can lose at
+most one vote and one competitor can gain at most one vote, so the top-two gap
+shrinks by at most two.  A strict gap greater than two preserves the winner.
+This is a sufficient certificate, not a converse.
+
+## Proposition 3: binary odd-k pivotal identity
+
+Let `k = 2m+1`, let the two labels be encoded as zero and one, and let a
+query contain distinct prototype indices.  Define `P_i(x)=1` when prototype
+`i` is in the neighborhood and the other `2m` votes contain exactly `m` votes
+for each class.  Then `P_i(x)=1` if and only if flipping label `i` changes the
+majority prediction.  Consequently,
+
+`sum_i I_i(S,Q) = (m+1) sum_{x in Q} V_k(S,x) = ((k+1)/2) sum_x V_k(S,x)`.
+
+### Proof
+
+With an odd vote count, the other `2m` votes are tied exactly when the
+removed vote is one of the `m+1` votes for the current majority.  Changing
+that vote produces `m` votes for the old winner and `m+1` for the other class,
+so the prediction changes.  If the other votes are not tied, their majority
+remains a majority after one label change.  For every vulnerable query,
+exactly its `m+1` current majority prototypes satisfy the condition; a
+non-vulnerable query contributes zero.  Summing over queries proves the
+identity.
+
+This is the standard pivotal-variable identity for odd majority, specialized
+to fixed kNN neighborhoods.  It is a correctness check, not a claim of a new
+Boolean-function theorem.
+
+## Proposition 4: point risk and global single-relabel risk
+
+For any binary odd-k batch with `n` training prototypes, let
+`R_point = q^{-1} sum_t V_t` and `R_1 = q^{-1} max_{i,c} I_{i->c}`.
+When the same opposite-label replacement is admissible for all prototypes,
+then
+
+`((k+1)/(2n)) R_point <= R_1 <= R_point`.
+
+### Proof
+
+The upper bound follows because a fixed prototype can be decisive only for a
+vulnerable query.  For the lower bound, each vulnerable odd-binary query has
+exactly `(k+1)/2` decisive prototypes, and the decisive direction is the
+opposite class.  Thus `sum_{i,c} I_{i->c} = q R_point (k+1)/2` and
+`max_{i,c} I_{i->c} >= (sum_{i,c} I_{i->c})/n`.
+
+The bounds are generally not equalities.  A query-disjoint construction can
+spread decisive incidences over many prototypes, while a shared-neighborhood
+construction can concentrate them on one prototype.  The factor `n` is
+essential; replacing it by `k` is false whenever the number of queries or
+training prototypes is larger than the neighborhood size.  The experiment
+records these as structural separation examples rather than treating the two
+risks as interchangeable estimators.
+
+## Proposition 5: classification-error change
+
+For a fixed replacement direction `i -> c`, with true query labels `y_t^*`,
+
+`DeltaErr_{i->c} = q^{-1} sum_t (1{h_{S^{i->c}}(x_t) != y_t^*} - 1{h_S(x_t) != y_t^*})`.
+
+If the binary prediction necessarily flips on a query under the considered
+direction, its contribution is `1 - 2 e_0(x_t)`, where `e_0` is the baseline
+error indicator.  Therefore prediction-change risk and error improvement are
+not equivalent: a change can repair an error or damage a correct prediction.
+
+## Proposition 6: exact local probability under independent label flips
+
+Let the k fixed neighbors have labels `Y_j` and independent flip indicators
+`B_j ~ Bernoulli(p_j)`.  In the binary case, the post-flip number of class-0
+votes is Poisson-binomial with success probabilities
+
+`q_j = 1-p_j` when `Y_j=0`, and `q_j=p_j` when `Y_j=1`.
+
+The dynamic program
+
+`D_0(0)=1`, `D_j(s)=D_{j-1}(s)(1-q_j)+D_{j-1}(s-1)q_j`
+
+returns the exact mass of each post-flip vote count.  Summing masses whose
+deterministic vote winner differs from the baseline gives the exact query
+flip probability.  This remains valid for heterogeneous probabilities,
+boundary probabilities 0 or 1, even `k`, and any fixed tie priority.
+
+### Proof
+
+The recurrence is the convolution of independent Bernoulli masses.  Each
+post-flip vote vector maps deterministically to a count and then to a winner;
+partitioning the sample space by the count and summing the corresponding
+masses is exact.
+
+## Proposition 7: first-order label-noise derivative
+
+For any Boolean query-change function `f(B)` with `B_i` independent Bernoulli
+coordinates, let `r(p)=E_p[f(B)]`. At the all-zero vector,
+
+`partial r / partial p_i |_{p=0} = f(e_i)-f(0)`.
+
+For a batch risk, this derivative equals `I_i/q` for the relevant binary
+single-flip direction.  The implementation exposes the resulting linear
+approximation `q^{-1} sum_i p_i I_i`; it is not labelled as an exact finite-p
+formula.
+
+### Proof
+
+Condition on all coordinates except `B_i`.  The conditional expectation is
+`(1-p_i)f(0)+p_i f(e_i)` at `p_{-i}=0`; differentiating gives the result.
+
+## Proposition 8: batch variance under shared perturbations
+
+Let `R(B)=q^{-1} sum_t Z_t(B)` be the fraction of queries whose predictions
+change under one shared flip vector.  Define `d_i` as the number of queries
+whose prediction can change when only prototype i's label is changed, allowing
+the other labels to be held at any fixed state.  Then changing coordinate i
+changes R by at most `c_i=d_i/q`.  For independent `B_i ~ Bernoulli(p_i)`,
+
+`Var(R) <= sum_i p_i(1-p_i)c_i^2`.
+
+### Proof
+
+Let `B^(i)` replace coordinate i by an independent copy.  The Efron--Stein
+inequality gives `Var(R) <= 1/2 sum_i E[(R(B)-R(B^(i)))^2]`.  The two values
+can differ only on at most `d_i` query indicators and hence the squared
+difference is at most `c_i^2` when the two Bernoulli copies differ.  That
+event has probability `2p_i(1-p_i)`, yielding the bound.  Query indicators
+are therefore not treated as independent.  The exact pairwise dynamic
+program in `probability.py` is used when a binary batch permits it.
+
+## Proposition 9: heterogeneous local concentration bound
+
+Assume odd `k=2m+1`, conditional independence of neighbor labels given their
+features, and `|eta(x)-eta(x')| <= L ||x-x'||` within the neighborhood.  Let
+`r_k(x)=max_j ||X_(j)(x)-x||` and
+`a=(|eta(x)-1/2|-L r_k(x))_+`.  Then
+
+`Pr(V_k(x)=1 | X_1,...,X_n) <= exp(-2k (a - 1/(2k))_+^2)`.
+
+### Proof
+
+Suppose `eta(x) >= 1/2`; the other case is symmetric.  If `a=0`, the
+right-hand side is one and the claim is the trivial probability bound.  If
+`a>0`, each neighbor has conditional class-1 probability at least `1/2+a`.
+The vulnerability event is contained in `{sum_j Y_j <= (k+1)/2}`.  Its
+threshold is at least `k a - 1/2` below the conditional mean.  Hoeffding's
+inequality for independent, not necessarily identically distributed Bernoulli
+variables gives the stated bound, with the positive part covering the
+remaining boundary regime.
+
+The result is deliberately restricted to odd k and conditional independence;
+it is not asserted as a universal finite-sample law for arbitrary dependent
+training labels.
+
+## Two-dimensional finite construction
+
+For `k >= 2`, take representatives
+`r_j=(cos(2 pi j/k), sin(2 pi j/k))` and supports
+`s_{j,t}=(1+t epsilon/k)r_j`, `t=1,...,k`.  Every support is assigned the
+representative's class.  The nearest cross-cluster representative distance is
+`2 sin(pi/k)`.  Every point in a cluster lies within epsilon of its
+representative, so every cross-cluster distance is at least
+`2 sin(pi/k)-2 epsilon`, while within-cluster distances are at most epsilon.
+Thus `epsilon < 2 sin(pi/k)/3` separates clusters.  At the origin, every
+representative is closer than every support because the representative radius
+is one and support radii exceed one.  For an open ball of radius
+`delta < epsilon/(2k)`, the same ordering is preserved by the triangle
+inequality.  Deleting any one point leaves k same-label points in its cluster,
+so its LOO prediction is correct under the separation condition.  The
+representative labels are assigned with a one-vote margin for odd k and a
+tie resolved by class priority for even k; flipping the designated
+representative changes every query in that central ball.
+
+The code checks the finite inequalities numerically for each selected k.  The
+`k=1` case is handled separately in the experiment by two same-label pairs
+placed in separated regions, because the ring argument is only for `k >= 2`.
+
+## Results intentionally not promoted to theorems
+
+Monotonicity of empirical PRV in k, a universal high-order truncation error
+bound based only on first-order influence, and a universal asymptotic rate for
+the 23-dataset panel are not asserted here.  They require additional
+distributional assumptions or are tested as empirical questions.

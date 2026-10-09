@@ -1,69 +1,36 @@
-# Leave-One-Out Can Miss Prototype Relabeling Vulnerability in kNN Classification
+# Auditing Prototype Replacement Vulnerability in kNN Classification
 
-This repository contains the manuscript source, reproducibility code, and submission materials
-for a PAA-targeted study of local reliability in deterministic k-nearest-neighbor classification.
+This repository provides the reproducible implementation for **Auditing Prototype Replacement Vulnerability in kNN Classification: Exact Influence, Probabilistic Stability, and Label Review**.
 
-Core claim:
+The central analysis distinguishes deleted-point leave-one-out recovery error from retained-prototype relabeling vulnerability.  It implements exact directional influence, point-level vulnerability, vote-margin diagnostics, probabilistic stability under label flips, query-neighborhood overlap-graph variance, and controlled small-motion checks.
 
-> Deleted-point leave-one-out error is an error-estimation signal, not a certificate of local prototype relabeling reliability; local vote margin provides a practical audit for where relabeling one retained prototype can change nearby decisions.
+## Repository contents
 
-## Repository layout
+- `src/knn_reliability/`: deterministic kNN, influence, geometry, probability, and audit utilities.
+- `scripts/acquire_data.py`: dataset acquisition and synthetic-data generation with a reproducible manifest.
+- `experiments/run_revision_experiments.py`: E0--E9 experiment runner used by the revision protocol.
+- `figures/scripts/build_revision_figures.py`: figure-generation script driven by experiment outputs.
+- `tests/`: regression tests for the kNN, influence, geometry, and probability implementations.
+- `theory/`: theorem proofs, complexity notes, novelty matrix, and theory verification record.
 
-- `manuscript_source_flat/`
-  - active Springer `sn-jnl` manuscript source
-  - current manuscript PDF at `manuscript_source_flat/main.pdf`
-- `reproducibility_project/`
-  - benchmark runner, experiment scripts, figure builders, and configuration
-- `supplementary/`
-  - Online Resource preparation files for submission
-- `editorial/`
-  - cover letter drafts, submission notes, and preflight checks
-- `submission_package/`
-  - locally assembled upload bundle for journal submission
+## Data sources
 
-## Quick start
+The acquisition script obtains the benchmark panel from:
 
-Recommended environment:
+- scikit-learn built-in loaders: Iris, Wine, Breast Cancer Wisconsin, and Digits;
+- scikit-learn generators: two moons, concentric circles, four blobs, and the configured classification panels;
+- OpenML datasets: Dermatology (`data_id=32`), Diabetes (`37`), Haberman (`43`), Heart Statlog (`53`), Ionosphere (`59`), Parkinsons (`148`), Segment (`36`), Sonar (`40`), and Vehicle (`54`).
 
-```powershell
-conda activate your_env_name
+## Reproduce the analyses
+
+From the repository root:
+
+```bash
+python -m pip install -r requirements.txt
+python scripts/acquire_data.py --output-dir data/processed
+python -m pytest
+python experiments/run_revision_experiments.py
+python figures/scripts/build_revision_figures.py
 ```
 
-Environment check:
-
-```powershell
-python reproducibility_project/scripts/paa_runner.py env-check --config reproducibility_project/config/paa_rebuild_config.yaml
-```
-
-Acquire datasets and cache processed copies:
-
-```powershell
-python reproducibility_project/scripts/paa_runner.py acquire-data --config reproducibility_project/config/paa_rebuild_config.yaml
-```
-
-Run the benchmark:
-
-```powershell
-python reproducibility_project/scripts/paa_runner.py run-benchmark --config reproducibility_project/config/paa_rebuild_config.yaml
-```
-
-## Data policy
-
-This repository does not publish a bulk copy of all benchmark datasets.
-Most datasets are fetched automatically from their original upstream sources or regenerated locally.
-See [DATA_ACCESS.md](DATA_ACCESS.md) for acquisition details and fallback instructions.
-
-## Manuscript focus
-
-The current PAA version is organized around:
-
-1. `LOO` as deleted-point recovery error.
-2. `PRV` as fixed-location prototype relabeling vulnerability.
-3. `EnumVulnRate`, `BandRate`, and `Exposure` as the main audit outputs.
-4. margin-aware `k` selection and conservative cleaning as secondary applications.
-
-## Notes
-
-- Cached data, logs, and generated tables/figures are intentionally kept out of version control.
-- The public code path is meant to document how results are rebuilt without redistributing third-party datasets in bulk.
-- No DOI-based public data deposit is used here because some upstream dataset redistribution rights may be unclear.
+The experiment runner writes audit tables and run metadata under `results/`.  The figure builder reads the processed tables and writes panels under `figures/`.  To select a subset of experiments, pass names such as `--experiments e1 e2 e3 e6`.
