@@ -1,4 +1,4 @@
-"""Build the six revision figures from the processed experiment tables."""
+"""Build the seven revision figures from the processed experiment tables."""
 
 from __future__ import annotations
 
@@ -115,8 +115,10 @@ def fig1_framework() -> None:
             [query[0, 1], points[neighbor_index, 1]],
             color="#999999", lw=0.8, ls="--", zorder=0,
         )
+    representative_labels = {1, 2, 3, 4, 5, 6, 7, 18}
     for index, (x, y) in enumerate(points, start=1):
-        axes[0].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=9)
+        if index in representative_labels:
+            axes[0].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=8.5)
     axes[0].text(
         0.5, 0.05,
         f"independent query votes {base_counts[0].tolist()} $\\rightarrow$ class {int(base_prediction[0])}",
@@ -134,7 +136,8 @@ def fig1_framework() -> None:
             color="#999999", lw=0.8, ls="--", zorder=0,
         )
     for index, (x, y) in enumerate(points, start=1):
-        axes[1].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=9)
+        if index in representative_labels:
+            axes[1].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=8.5)
     axes[1].annotate("$z_1$: 0 $\\to$ 1", xy=points[0], xytext=(0.18, 1.22),
                      arrowprops={"arrowstyle": "->", "color": "#984ea3"}, color="#984ea3", fontsize=9)
     axes[1].text(
@@ -147,7 +150,8 @@ def fig1_framework() -> None:
     # The matrix is generated from the same four-query classifier object as
     # panels (a) and (b), rather than entered as a visual schematic.
     image = axes[2].imshow(influence_matrix, cmap="Blues", vmin=0, vmax=1, aspect="auto")
-    axes[2].set_xticks(range(len(points)), [f"p{i}" for i in range(1, len(points) + 1)], rotation=65)
+    matrix_ticks = sorted(representative_labels)
+    axes[2].set_xticks([index - 1 for index in matrix_ticks], [f"z{i}" for i in matrix_ticks], rotation=45)
     axes[2].set_yticks(range(4), ["q1", "q2", "q3", "q4"])
     axes[2].set_xlabel("training prototype", fontsize=8)
     axes[2].set_ylabel("query", fontsize=8)
@@ -280,32 +284,33 @@ def fig2_theory() -> None:
 def fig3_probability() -> None:
     rows = read_csv("e3_probability_risk.csv")
     finite_rows = read_csv("e3_finite_noise_validation.csv")
-    fig, axes = plt.subplots(2, 2, figsize=(8.2, 6.0))
+    fig, axes = plt.subplots(2, 3, figsize=(11.4, 6.2))
+    axes = axes.ravel()
     independent_rows = [r for r in rows if r["assumption"] == "independent_flips"]
     exact = np.array([float(r["exact_expectation_independent_model"]) for r in independent_rows])
     mc = np.array([float(r["monte_carlo_mean"]) for r in independent_rows])
     first = np.array([float(r["first_order_approximation"]) for r in independent_rows])
     variance = np.array([float(r["variance_exact_shared_flips"]) for r in independent_rows])
     bound = np.array([float(r["efron_stein_variance_bound"]) for r in independent_rows])
-    axes[0, 0].scatter(exact, mc, c=[int(r["k"]) for r in independent_rows], cmap="viridis", s=18, alpha=0.75)
+    axes[0].scatter(exact, mc, c=[int(r["k"]) for r in independent_rows], cmap="viridis", s=18, alpha=0.75)
     lim = max(exact.max(), mc.max()) * 1.05
-    axes[0, 0].plot([0, lim], [0, lim], "k--", lw=0.8)
-    axes[0, 0].set(xlabel="exact expectation", ylabel="Monte Carlo mean")
-    panel_label(axes[0, 0], "a")
+    axes[0].plot([0, lim], [0, lim], "k--", lw=0.8)
+    axes[0].set(xlabel="exact expectation", ylabel="Monte Carlo mean")
+    panel_label(axes[0], "a")
     finite_real = [r for r in finite_rows if r.get("structure_type") == "real_data"]
-    axes[0, 1].scatter(
+    axes[1].scatter(
         [float(r["epsilon"]) for r in finite_real],
         [float(r["relative_error"]) for r in finite_real],
         c=[int(r["k"]) for r in finite_real], cmap="plasma", s=20, alpha=0.8,
     )
-    axes[0, 1].set(xlabel="flip probability $\\epsilon$", ylabel="relative variance error")
-    axes[0, 1].set_ylim(bottom=0)
-    panel_label(axes[0, 1], "b")
-    axes[1, 0].scatter(variance, bound, c=[int(r["k"]) for r in independent_rows], cmap="viridis", s=18, alpha=0.75)
+    axes[1].set(xlabel="flip probability $\\epsilon$", ylabel="relative variance error")
+    axes[1].set_ylim(bottom=0)
+    panel_label(axes[1], "b")
+    axes[2].scatter(variance, bound, c=[int(r["k"]) for r in independent_rows], cmap="viridis", s=18, alpha=0.75)
     lim_v = max(bound.max(), variance.max()) * 1.05
-    axes[1, 0].plot([0, lim_v], [0, lim_v], "k--", lw=0.8)
-    axes[1, 0].set(xlabel="exact batch variance", ylabel="Efron--Stein bound")
-    panel_label(axes[1, 0], "c")
+    axes[2].plot([0, lim_v], [0, lim_v], "k--", lw=0.8)
+    axes[2].set(xlabel="exact batch variance", ylabel="Efron--Stein bound")
+    panel_label(axes[2], "c")
     controlled = [
         r for r in finite_rows if r.get("pair_id") == "controlled_same_k_Rpoint_pair"
     ]
@@ -339,37 +344,49 @@ def fig3_probability() -> None:
             for q in range(distributed_matrix.shape[0]) for p in range(distributed_matrix.shape[1])
         ],
     ])
-    axis = axes[1, 1]
-    axis.clear()
-    axis.set_axis_off()
-    for inset, matrix, title, color in (
-        ([0.02, 0.37, 0.45, 0.53], shared_matrix, "shared", "Blues"),
-        ([0.53, 0.37, 0.45, 0.53], distributed_matrix, "distributed", "Oranges"),
+    for axis, matrix, title, color, panel in (
+        (axes[3], shared_matrix, "shared", "Blues", "d"),
+        (axes[4], distributed_matrix, "distributed", "Oranges", "e"),
     ):
-        matrix_axis = axis.inset_axes(inset)
-        matrix_axis.imshow(matrix, cmap=color, vmin=0, vmax=1, aspect="auto")
-        matrix_axis.set_title(title, fontsize=8)
-        matrix_axis.set_xticks([])
-        matrix_axis.set_yticks(range(4), ["q1", "q2", "q3", "q4"], fontsize=6)
+        axis.imshow(matrix, cmap=color, vmin=0, vmax=1, aspect="auto")
+        axis.set_title(title, fontsize=8)
+        axis.set_xticks([])
+        axis.set_yticks(range(4), ["q1", "q2", "q3", "q4"], fontsize=6)
+        axis.set_xlabel("decisive prototypes", fontsize=7)
         for row_index in range(matrix.shape[0]):
             for column_index in range(matrix.shape[1]):
                 if matrix[row_index, column_index]:
-                    matrix_axis.text(column_index, row_index, "1", ha="center", va="center", fontsize=6)
+                    axis.text(column_index, row_index, "1", ha="center", va="center", fontsize=7)
+        panel_label(axis, panel)
     shared_row = controlled_by_name["shared"]
     distributed_row = controlled_by_name["distributed"]
-    axis.text(
-        0.5, 0.18,
-        f"same $k=3$, $q=4$, $R_{{\\mathrm{{point}}}}=1$;  shared $H_2$={float(shared_row['H2']):.3f}, "
-        f"$c^2H_2$={float(shared_row['variance_coefficient']):.3f};  distributed "
-        f"$H_2$={float(distributed_row['H2']):.3f}, $c^2H_2$={float(distributed_row['variance_coefficient']):.3f}",
-        ha="center", va="center", fontsize=7,
-    )
-    axis.text(0.5, 0.03, "rows: queries; columns: decisive prototypes", ha="center", fontsize=7)
-    panel_label(axes[1, 1], "d")
-    fig.colorbar(axes[0, 0].collections[0], ax=axes[0, 0], label="k", fraction=0.046, pad=0.04)
+    axes[3].text(0.5, -0.20, f"$H_2$={float(shared_row['H2']):.3f}; $c^2H_2$={float(shared_row['variance_coefficient']):.3f}",
+                 transform=axes[3].transAxes, ha="center", fontsize=7)
+    axes[4].text(0.5, -0.20, f"$H_2$={float(distributed_row['H2']):.3f}; $c^2H_2$={float(distributed_row['variance_coefficient']):.3f}",
+                 transform=axes[4].transAxes, ha="center", fontsize=7)
+    finite_by_epsilon = {}
+    for row in finite_real:
+        finite_by_epsilon.setdefault(float(row["epsilon"]), []).append(row)
+    epsilons = sorted(finite_by_epsilon)
+    exact_finite = [np.mean([float(row["exact_variance"]) for row in finite_by_epsilon[epsilon]]) for epsilon in epsilons]
+    first_finite = [np.mean([float(row["first_order_variance"]) for row in finite_by_epsilon[epsilon]]) for epsilon in epsilons]
+    axes[5].plot(epsilons, exact_finite, "o-", label="exact finite-noise variance", color="#377eb8")
+    axes[5].plot(epsilons, first_finite, "s--", label="first-order coefficient", color="#d95f02")
+    axes[5].set(xlabel="flip probability $\\epsilon$", ylabel="variance")
+    axes[5].legend(frameon=False, fontsize=6.5)
+    panel_label(axes[5], "f")
+    fig.colorbar(axes[0].collections[0], ax=axes[:3], label="k", fraction=0.025, pad=0.02)
     write_panel("fig4_probability_panels.csv", [
-        *[{"panel": "a/c", **r} for r in rows],
-        *[{"panel": "b/d", **r} for r in finite_rows],
+        *[{"panel": "a", **r} for r in independent_rows],
+        *[{"panel": "c", **r} for r in independent_rows],
+        *[{"panel": "b", **r} for r in finite_real],
+        *[{"panel": "f", "epsilon": epsilon, "mean_exact_variance": exact_value,
+           "mean_first_order_variance": first_value}
+          for epsilon, exact_value, first_value in zip(epsilons, exact_finite, first_finite)],
+        *[{"panel": "d", "structure": "shared", "H2": shared_row["H2"],
+           "variance_coefficient": shared_row["variance_coefficient"]}],
+        *[{"panel": "e", "structure": "distributed", "H2": distributed_row["H2"],
+           "variance_coefficient": distributed_row["variance_coefficient"]}],
     ])
     save(fig, "fig4_probability_stability")
 
@@ -384,9 +401,10 @@ def fig4_influence() -> None:
     ]
     k_values = sorted({int(row["k"]) for row in rows})
     summary_rows = []
-    fig, axes = plt.subplots(2, 2, figsize=(8.2, 5.7), sharex=True)
+    fig, axes = plt.subplots(2, 3, figsize=(10.8, 5.7))
+    axes = axes.ravel()
     for axis, (field, ylabel, description), label in zip(
-        axes.ravel(), metrics, ("a", "b", "c", "d")
+        axes[:4], metrics, ("a", "b", "c", "d")
     ):
         means, errors = [], []
         for k_value in k_values:
@@ -411,6 +429,38 @@ def fig4_influence() -> None:
         axis.grid(axis="y", color="#dddddd", linewidth=0.5)
         panel_label(axis, label)
     write_panel("fig3_deterministic_influence_panels.csv", summary_rows)
+    paired_rows = []
+    dataset_names = sorted({row["dataset"] for row in rows})
+    for dataset in dataset_names:
+        dataset_rows = [row for row in rows if row["dataset"] == dataset]
+        for field, _, _ in metrics:
+            at_k3 = [float(row[field]) for row in dataset_rows if int(row["k"]) == 3]
+            at_k15 = [float(row[field]) for row in dataset_rows if int(row["k"]) == 15]
+            if at_k3 and at_k15:
+                paired_rows.append({
+                    "dataset": dataset,
+                    "metric": field,
+                    "comparison": "k15_minus_k3",
+                    "delta": float(np.mean(at_k15) - np.mean(at_k3)),
+                })
+    paired_axis = axes[4]
+    metric_colors = {"point_prv": "#377eb8", "r1": "#d95f02", "loo_error": "#4daf4a"}
+    metric_labels = {"point_prv": "$R_{\\mathrm{point}}$", "r1": "$R_1$", "loo_error": "LOO error"}
+    positions = np.arange(len(dataset_names))
+    for offset, field in zip((-0.22, 0.0, 0.22), ("point_prv", "r1", "loo_error")):
+        values = []
+        for dataset in dataset_names:
+            match = [row for row in paired_rows if row["dataset"] == dataset and row["metric"] == field]
+            values.append(float(match[0]["delta"]) if match else np.nan)
+        paired_axis.scatter(positions + offset, values, s=13, label=metric_labels[field], color=metric_colors[field])
+    paired_axis.axhline(0, color="#555555", lw=0.8)
+    paired_axis.set_ylabel("paired change: $k=15-k=3$")
+    paired_axis.set_xticks(positions, dataset_names, rotation=75, ha="right", fontsize=5)
+    paired_axis.legend(frameon=False, fontsize=6)
+    paired_axis.grid(axis="y", color="#dddddd", linewidth=0.5)
+    panel_label(paired_axis, "e")
+    axes[5].set_axis_off()
+    write_panel("fig3_deterministic_influence_paired.csv", paired_rows)
     save(fig, "fig3_deterministic_influence")
 
 
@@ -418,19 +468,24 @@ def fig5_audit() -> None:
     rows = read_csv("e5_label_audit.csv")
     methods = ["random", "neighborhood_exposure", "exact_decisive_influence", "loo_error", "combined_influence_loo"]
     fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.1))
-    selected = [np.mean([float(r["selected_error_rate"]) for r in rows if r["method"] == m]) for m in methods]
-    axes[0].bar(range(len(methods)), selected, color=["#999999", "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3"])
+    selected_values = [[float(r["selected_error_rate"]) for r in rows if r["method"] == m] for m in methods]
+    selected = [np.mean(values) for values in selected_values]
+    selected_errors = [1.96 * np.std(values, ddof=1) / np.sqrt(len(values)) for values in selected_values]
+    axes[0].bar(range(len(methods)), selected, yerr=selected_errors, capsize=3,
+                 color=["#999999", "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3"])
     axes[0].axhline(np.mean([float(r["injected_error_rate"]) for r in rows]), color="black", ls="--", lw=0.9, label="injected rate")
     axes[0].set(xticks=range(len(methods)), xticklabels=["random", "exposure", "exact\ninfluence", "LOO", "combined"],
                 ylabel="selected corrupted fraction")
     panel_label(axes[0], "a")
     axes[0].legend(frameon=False, fontsize=7)
     for method, color in zip(methods, ["#999999", "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3"]):
-        means = []
+        means, errors = [], []
         for budget in (0.05, 0.10, 0.20):
             values = [float(r["test_accuracy_gain"]) for r in rows if r["method"] == method and abs(float(r["budget_fraction"]) - budget) < 1e-9]
             means.append(np.mean(values))
-        axes[1].plot([5, 10, 20], means, "o-", label=method.replace("_", " "), color=color)
+            errors.append(1.96 * np.std(values, ddof=1) / np.sqrt(len(values)))
+        axes[1].errorbar([5, 10, 20], means, yerr=errors, fmt="o-", capsize=2,
+                         label=method.replace("_", " "), color=color)
     axes[1].axhline(0, color="black", lw=0.7)
     axes[1].set(xlabel="review budget (%)", ylabel="test accuracy gain")
     panel_label(axes[1], "b")
@@ -439,158 +494,109 @@ def fig5_audit() -> None:
     save(fig, "fig5_label_audit")
 
 
-def fig6_operations() -> None:
-    runtime = [
-        row
-        for row in read_csv("e9_runtime.csv")
-        if row.get("benchmark_family") == "deterministic_influence"
-    ]
-    probability = [
-        row
-        for row in read_csv("e9_runtime.csv")
-        if row.get("benchmark_family") in {
-            "shared_probability_fixed_train",
-            "shared_probability_overlap_sweep",
-        }
-        and row.get("method") in {
-            "sparse_1d_exact", "sparse_2d_exact", "dense_1d_exact", "dense_2d_exact"
-        }
-    ]
+def fig6_geometry_operations() -> None:
     ties = read_csv("e7_tie_weight_imbalance.csv")
-    geometry = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "relabel_plus_radial_displacement"]
-    boundary = [r for r in read_csv("e6_geometry_construction.csv") if r.get("perturbation") == "vote_gap_stratified_boundary_motion"]
-    curve = [
-        r for r in read_csv("e6_geometry_construction.csv")
-        if r.get("perturbation") == "four_state_motion_probability_curve"
-        and r.get("candidate_label_mode", "0") == "0"
-    ]
-    curve_candidate_control = [
-        r for r in read_csv("e6_geometry_construction.csv")
-        if r.get("perturbation") == "four_state_motion_probability_curve"
-        and r.get("candidate_label_mode") == "1"
-    ]
+    e6_rows = read_csv("e6_geometry_construction.csv")
+    geometry = [r for r in e6_rows if r.get("perturbation") == "relabel_plus_radial_displacement"]
+    boundary = [r for r in e6_rows if r.get("perturbation") == "vote_gap_stratified_boundary_motion"]
+    curve = [r for r in e6_rows if r.get("perturbation") == "four_state_motion_probability_curve"]
     weighted = [r for r in ties if r.get("policy") == "weighted_vote"]
-    fig, axes = plt.subplots(2, 3, figsize=(11.4, 6.3))
+    fig, axes = plt.subplots(1, 3, figsize=(11.2, 3.8))
     axes = axes.ravel()
     if curve:
-        gap_colors = plt.get_cmap("viridis")(np.linspace(0.08, 0.92, len({r["boundary_gap"] for r in curve})))
-        for color, boundary_gap in zip(gap_colors, sorted({r["boundary_gap"] for r in curve}, key=float)):
-            subset = sorted(
-                [r for r in curve if r["boundary_gap"] == boundary_gap],
-                key=lambda row: float(row["delta"]),
-            )
-            axes[0].plot(
-                [float(r["delta"]) for r in subset],
-                [float(r["label_only_prediction_changed_rate"]) for r in subset],
-                "o-", color=color, ms=3, lw=1.1, label=f"label, gap={float(boundary_gap):g}",
-            )
-            axes[0].plot(
-                [float(r["delta"]) for r in subset],
-                [float(r["geometry_prediction_changed_rate"]) for r in subset],
-                "--", color=color, alpha=0.85, lw=0.9,
-            )
-            axes[0].plot(
-                [float(r["delta"]) for r in subset],
-                [float(r["combined_prediction_changed_rate"]) for r in subset],
-                ":", color=color, alpha=0.9, lw=1.2,
-            )
-            axes[0].plot(
-                [float(r["delta"]) for r in subset],
-                [float(r["candidate_in_neighbor_rate"]) for r in subset],
-                "-.", color=color, alpha=0.35, lw=0.8,
-            )
-            control_subset = sorted(
-                [r for r in curve_candidate_control if r["boundary_gap"] == boundary_gap],
-                key=lambda row: float(row["delta"]),
-            )
-            axes[0].plot(
-                [float(r["delta"]) for r in control_subset],
-                [float(r["geometry_prediction_changed_rate"]) for r in control_subset],
-                "--", color="#555555", alpha=0.25, lw=0.8,
-                label="geometry, candidate-label control"
-                if boundary_gap == sorted({r["boundary_gap"] for r in curve}, key=float)[0]
-                else None,
-            )
-        axes[0].text(
-            0.98, 0.04, "solid: label-only; dashed: geometry-only\ndotted: joint; dash-dot: candidate enters; gray: label-1 control",
-            transform=axes[0].transAxes, ha="right", va="bottom", fontsize=6.5,
-        )
-        axes[0].set(xlabel="moved-prototype displacement $\\delta$", ylabel="prediction-change probability")
+        for mode, color, label in (("0", "#377eb8", "candidate labels 0,0"), ("1", "#d95f02", "candidate labels 1,1")):
+            subset = [r for r in curve if r["candidate_label_mode"] == mode]
+            grouped = {}
+            for row in subset:
+                grouped.setdefault(float(row["delta"]), []).append(row)
+            deltas = sorted(grouped)
+            geometry_rates = [np.mean([float(row["geometry_prediction_changed_rate"]) for row in grouped[delta]]) for delta in deltas]
+            joint_rates = [np.mean([float(row["combined_prediction_changed_rate"]) for row in grouped[delta]]) for delta in deltas]
+            axes[0].plot(deltas, geometry_rates, "o--", color=color, ms=3, lw=1.0, label=f"geometry, {label}")
+            axes[0].plot(deltas, joint_rates, "s-", color=color, ms=3, lw=1.0, label=f"joint, {label}")
+        axes[0].set(xlabel="displacement $\\delta$", ylabel="prediction-change probability")
         axes[0].set_ylim(-0.04, 1.04)
-        axes[0].legend(frameon=False, fontsize=6.5, ncol=2, loc="upper left")
-    else:
-        axes[0].text(0.5, 0.5, "curve unavailable", ha="center", va="center")
-        axes[0].set_axis_off()
+        axes[0].legend(frameon=False, fontsize=6.3, ncol=2)
     panel_label(axes[0], "a")
-    for case in sorted({r["case"] for r in weighted}):
-        subset = [r for r in weighted if r["case"] == case]
-        axes[1].plot([float(r["power"]) for r in subset], [float(r["weighted_margin"]) for r in subset], "o-", label=case.replace("_", " "))
-    axes[1].set(xlabel="inverse-distance power", ylabel="weighted vote margin")
+    conditions = ["enters", "stays_inside", "exits"]
+    positions = np.arange(len(conditions))
+    for offset, field, label, color in ((-0.14, "target_in_neighbor_rate", "target inside", "#377eb8"),
+                                        (0.14, "neighbor_exchange_rate", "neighborhood exchange", "#d95f02")):
+        values = [np.mean([float(row[field]) for row in boundary if row["motion_condition"] == condition]) for condition in conditions]
+        axes[1].bar(positions + offset, values, width=0.26, label=label, color=color)
+    axes[1].set_xticks(positions, [condition.replace("_", " ") for condition in conditions], rotation=20)
+    axes[1].set(xlabel="motion condition", ylabel="rate")
+    axes[1].set_ylim(0, 1.05)
     panel_label(axes[1], "b")
     axes[1].legend(frameon=False, fontsize=6.5)
-    for k in sorted({int(r["k"]) for r in runtime}):
-        subset = [
-            r
-            for r in runtime
-            if int(r["k"]) == k and r["speedup"] not in {"", "nan"}
-        ]
-        axes[2].plot([int(r["n_train"]) for r in subset], [float(r["speedup"]) for r in subset], "o-", label=f"k={k}")
-    axes[2].set(xlabel="training prototypes", ylabel="reference / exact time")
+    for case in sorted({r["case"] for r in weighted}):
+        subset = [r for r in weighted if r["case"] == case]
+        axes[2].plot([float(r["power"]) for r in subset], [float(r["weighted_margin"]) for r in subset], "o-", label=case.replace("_", " "))
+    axes[2].set(xlabel="inverse-distance power", ylabel="weighted vote margin")
     panel_label(axes[2], "c")
-    axes[2].legend(frameon=False, fontsize=7)
-    fixed = [r for r in probability if r.get("benchmark_family") == "shared_probability_fixed_train"]
-    fixed_sparse = {int(r["n_query"]): r for r in fixed if r["method"] == "sparse_1d_exact"}
-    fixed_dense = {int(r["n_query"]): r for r in fixed if r["method"] == "dense_2d_exact"}
-    fixed_q = sorted(set(fixed_sparse) & set(fixed_dense))
-    fixed_speedups = [
-        float(fixed_dense[q]["runtime_median_seconds"])
-        / float(fixed_sparse[q]["runtime_median_seconds"])
-        for q in fixed_q
-    ]
-    sweep = [r for r in probability if r.get("benchmark_family") == "shared_probability_overlap_sweep"]
-    method_order = ["dense_2d_exact", "sparse_2d_exact", "dense_1d_exact", "sparse_1d_exact"]
-    method_labels = ["dense--2D", "sparse--2D", "dense--1D", "sparse--1D"]
-    sweep_by_method = {
-        method: {r["overlap_mode"]: r for r in sweep if r["method"] == method}
-        for method in method_order
-    }
-    axes[3].plot(fixed_q, fixed_speedups, "o-", color="#377eb8")
-    axes[3].set(xlabel="query count (fixed $n=1280$)", ylabel="dense--2D / sparse--1D time")
-    panel_label(axes[3], "d")
-    axes[3].axhline(1.0, color="#555555", lw=0.8, ls=":")
-    if all(sweep_by_method[method] for method in method_order):
-        modes = ["disjoint", "block_shared", "chain", "fully_shared"]
-        positions = np.arange(len(modes))
-        width = 0.18
-        baseline = sweep_by_method["sparse_1d_exact"]
-        colors = ["#222222", "#377eb8", "#d95f02", "#66a61e"]
-        for offset, method, label, color in zip(
-            (-1.5, -0.5, 0.5, 1.5), method_order, method_labels, colors
-        ):
-            values = [
-                float(sweep_by_method[method][mode]["runtime_median_seconds"])
-                / float(baseline[mode]["runtime_median_seconds"])
-                for mode in modes
-            ]
-            axes[4].bar(positions + offset * width, values, color=color, width=width, label=label)
-        axes[4].set_xticks(positions, [m.replace("_", " ") for m in modes], rotation=30, ha="right", fontsize=7)
-        axes[4].set(xlabel="query-overlap pattern", ylabel="runtime / sparse--1D")
-        axes[4].axhline(1.0, color="#555555", lw=0.8, ls=":")
-        axes[4].legend(frameon=False, fontsize=5.8, ncol=2, loc="upper left")
-    else:
-        axes[4].set_axis_off()
-    panel_label(axes[4], "e")
-    axes[5].set_axis_off()
-    write_panel("fig6_operations_panels.csv", [
+    axes[2].legend(frameon=False, fontsize=6.5)
+    write_panel("fig6_geometry_operations_panels.csv", [
         *[{"panel": "a", **r} for r in boundary],
         *[{"panel": "a", **r} for r in curve],
         *[{"panel": "a", **r} for r in geometry],
-        *[{"panel": "b", **r} for r in weighted],
-        *[{"panel": "c", **r} for r in runtime],
-        *[{"panel": "d", **r} for r in probability if r.get("benchmark_family") == "shared_probability_fixed_train"],
-        *[{"panel": "e", **r} for r in probability if r.get("benchmark_family") == "shared_probability_overlap_sweep"],
+        *[{"panel": "c", **r} for r in weighted],
     ])
-    save(fig, "fig6_reproducibility_operations")
+    save(fig, "fig6_geometry_operations")
+
+
+def fig7_efficiency_operations() -> None:
+    runtime_rows = read_csv("e9_runtime.csv")
+    deterministic = [r for r in runtime_rows if r.get("benchmark_family") == "deterministic_influence"]
+    k_sweep = [r for r in runtime_rows if r.get("benchmark_family") == "shared_probability_k_sweep"]
+    fixed = [r for r in runtime_rows if r.get("benchmark_family") == "shared_probability_fixed_train"]
+    overlap = [r for r in runtime_rows if r.get("benchmark_family") == "shared_probability_overlap_sweep"]
+    fig, axes = plt.subplots(2, 2, figsize=(9.5, 6.3))
+    axes = axes.ravel()
+    for k in sorted({int(r["k"]) for r in deterministic}):
+        subset = [r for r in deterministic if int(r["k"]) == k and r["speedup"] not in {"", "nan"}]
+        axes[0].plot([int(r["n_train"]) for r in subset], [float(r["speedup"]) for r in subset], "o-", label=f"k={k}")
+    axes[0].set(xlabel="training prototypes", ylabel="reference / exact time")
+    axes[0].legend(frameon=False, fontsize=7)
+    panel_label(axes[0], "a")
+    method_rows = {method: {int(r["k"]): r for r in k_sweep if r["method"] == method}
+                   for method in ("sparse_1d_exact", "sparse_2d_exact", "dense_1d_exact", "dense_2d_exact")}
+    k_values = sorted(method_rows["sparse_1d_exact"])
+    sparse_ratio = [float(method_rows["sparse_1d_exact"][k]["runtime_median_seconds"]) / float(method_rows["sparse_2d_exact"][k]["runtime_median_seconds"]) for k in k_values]
+    dense_ratio = [float(method_rows["dense_2d_exact"][k]["runtime_median_seconds"]) / float(method_rows["dense_1d_exact"][k]["runtime_median_seconds"]) for k in k_values]
+    axes[1].plot(k_values, sparse_ratio, "o-", label="sparse--1D / sparse--2D")
+    axes[1].plot(k_values, dense_ratio, "s--", label="dense--2D / dense--1D")
+    axes[1].axhline(1, color="#555555", lw=0.8, ls=":")
+    axes[1].set(xlabel="k (fixed q=40, fixed overlap edge fraction)", ylabel="runtime ratio")
+    axes[1].legend(frameon=False, fontsize=6.5)
+    panel_label(axes[1], "b")
+    fixed_methods = {method: {int(r["n_query"]): r for r in fixed if r["method"] == method} for method in ("sparse_1d_exact", "sparse_2d_exact", "dense_2d_exact")}
+    fixed_q = sorted(fixed_methods["sparse_1d_exact"])
+    axes[2].plot(fixed_q, [float(fixed_methods["dense_2d_exact"][q]["runtime_median_seconds"]) / float(fixed_methods["sparse_1d_exact"][q]["runtime_median_seconds"]) for q in fixed_q], "o-", label="dense--2D / sparse--1D")
+    axes[2].plot(fixed_q, [float(fixed_methods["sparse_2d_exact"][q]["runtime_median_seconds"]) / float(fixed_methods["sparse_1d_exact"][q]["runtime_median_seconds"]) for q in fixed_q], "s--", label="sparse--2D / sparse--1D")
+    axes[2].axhline(1, color="#555555", lw=0.8, ls=":")
+    axes[2].set(xlabel="query count (fixed n=1280)", ylabel="runtime ratio")
+    axes[2].legend(frameon=False, fontsize=6.5)
+    panel_label(axes[2], "c")
+    method_order = ["dense_2d_exact", "sparse_2d_exact", "dense_1d_exact", "sparse_1d_exact"]
+    modes = ["disjoint", "block_shared", "chain", "fully_shared"]
+    overlap_by_method = {method: {r["overlap_mode"]: r for r in overlap if r["method"] == method} for method in method_order}
+    positions = np.arange(len(modes))
+    baseline = overlap_by_method["sparse_1d_exact"]
+    for offset, method, label, color in zip((-1.5, -0.5, 0.5, 1.5), method_order, ("dense--2D", "sparse--2D", "dense--1D", "sparse--1D"), ("#222222", "#377eb8", "#d95f02", "#66a61e")):
+        values = [float(overlap_by_method[method][mode]["runtime_median_seconds"]) / float(baseline[mode]["runtime_median_seconds"]) for mode in modes]
+        axes[3].bar(positions + offset * 0.18, values, color=color, width=0.18, label=label)
+    axes[3].set_xticks(positions, [m.replace("_", " ") for m in modes], rotation=30, ha="right", fontsize=7)
+    axes[3].set(xlabel="query-overlap pattern", ylabel="runtime / sparse--1D")
+    axes[3].axhline(1, color="#555555", lw=0.8, ls=":")
+    axes[3].legend(frameon=False, fontsize=5.8, ncol=2)
+    panel_label(axes[3], "d")
+    write_panel("fig7_efficiency_operations_panels.csv", [
+        *[{"panel": "a", **r} for r in deterministic],
+        *[{"panel": "b", **r} for r in k_sweep],
+        *[{"panel": "c", **r} for r in fixed],
+        *[{"panel": "d", **r} for r in overlap],
+    ])
+    save(fig, "fig7_efficiency_operations")
 
 
 def main() -> None:
@@ -599,7 +605,8 @@ def main() -> None:
     fig3_probability()
     fig4_influence()
     fig5_audit()
-    fig6_operations()
+    fig6_geometry_operations()
+    fig7_efficiency_operations()
     print(f"wrote figures to {FIG_DIR}")
 
 

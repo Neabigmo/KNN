@@ -1109,8 +1109,18 @@ def run_e4() -> None:
     save_csv(PROCESSED_DIR / "e4_distribution_stability.csv", rows)
 
 
-def rank_scores(scores: np.ndarray, budget: int) -> np.ndarray:
-    order = np.lexsort((np.arange(len(scores)), -scores))
+def rank_scores(
+    scores: np.ndarray,
+    budget: int,
+    *,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """Rank scores with a reproducible random order inside exact ties."""
+    scores = np.asarray(scores, dtype=float)
+    if rng is None:
+        rng = np.random.default_rng(0)
+    tie_order = rng.permutation(len(scores))
+    order = tie_order[np.argsort(-scores[tie_order], kind="stable")]
     return order[:budget]
 
 
@@ -1124,6 +1134,7 @@ def normalize_score(scores: np.ndarray) -> np.ndarray:
 
 def run_e5() -> None:
     rows: list[dict[str, object]] = []
+    tie_rows: list[dict[str, object]] = []
     binary_datasets = ("breast_cancer_wisconsin", "digits_0_vs_8", "imbalanced_binary")
     for dataset in binary_datasets:
         for seed in SEEDS:
@@ -1154,7 +1165,12 @@ def run_e5() -> None:
                 for budget_fraction in (0.05, 0.10, 0.20):
                     budget = max(1, int(budget_fraction * len(y_clean)))
                     for method, score in scores.items():
-                        selected = rank_scores(score, budget)
+                        main_tie_seed = 0
+                        selected = rank_scores(
+                            score,
+                            budget,
+                            rng=np.random.default_rng(main_tie_seed),
+                        )
                         y_repaired = y_noisy.copy()
                         y_repaired[selected] = y_clean[selected]
                         repaired_val, _, _ = predict_from_neighbors(y_repaired, cache.indices, classes=labels)
@@ -1176,9 +1192,40 @@ def run_e5() -> None:
                                 "baseline_test_accuracy": baseline_accuracy,
                                 "oracle_repaired_test_accuracy": repaired_accuracy,
                                 "test_accuracy_gain": repaired_accuracy - baseline_accuracy,
+                                "tie_policy": "random_tie_order",
+                                "tie_seed": main_tie_seed,
+                                "tie_count": int(len(score) - len(np.unique(score))),
                             }
                         )
+                        for tie_rep in range(8):
+                            tie_seed = 910000 + seed * 10000 + int(noise_rate * 1000) * 10 + tie_rep
+                            tie_selected = rank_scores(
+                                score,
+                                budget,
+                                rng=np.random.default_rng(tie_seed),
+                            )
+                            tie_repaired = y_noisy.copy()
+                            tie_repaired[tie_selected] = y_clean[tie_selected]
+                            tie_test_prediction, _, _ = predict_from_neighbors(
+                                tie_repaired, test_cache.indices, classes=labels
+                            )
+                            tie_rows.append(
+                                {
+                                    "dataset": dataset,
+                                    "seed": seed,
+                                    "noise_rate": noise_rate,
+                                    "method": method,
+                                    "budget_fraction": budget_fraction,
+                                    "selected_budget": budget,
+                                    "tie_seed": tie_seed,
+                                    "tie_policy": "random_tie_order",
+                                    "tie_count": int(len(score) - len(np.unique(score))),
+                                    "selected_error_rate": float(np.mean(corrupted[tie_selected])),
+                                    "test_accuracy_gain": accuracy(y_test, tie_test_prediction) - baseline_accuracy,
+                                }
+                            )
     save_csv(PROCESSED_DIR / "e5_label_audit.csv", rows)
+    save_csv(PROCESSED_DIR / "e5_tie_sensitivity.csv", tie_rows)
 
 
 def run_e6() -> None:
@@ -1400,18 +1447,17 @@ def run_e6() -> None:
             )
 
     # A finite four-state intervention curve uses the same prototype for the
-    # label and position changes.  Two outside candidates have opposite
-    # labels, so a boundary exchange can produce either a null geometry effect
-    # or a prediction change instead of making the joint curve tautological.
+    # label and position changes.  The two outside candidates share one label
+    # within each condition; the conditions are rerun on the same displacement
+    # draws so that the label effect is not manufactured by copying a curve.
     curve_rng = np.random.default_rng(20261017)
     boundary_gaps = (0.005, 0.01, 0.025, 0.05, 0.10)
     displacement_radii = (0.0, 0.02, 0.05, 0.10, 0.20, 0.80, 2.00)
     # Index 0 is the one prototype whose label and location are both changed.
-    # Indices 1 and 6 are outside candidates with labels 0 and 1; indices 2--5
-    # are fixed inner neighbors with labels 0, 1, 1, 0.
+    # Indices 1 and 6 are outside candidates; indices 2--5 are fixed inner
+    # neighbors with labels 0, 1, 1, 0.  Candidate label mode 0 and mode 1
+    # are the two independently evaluated conditions.
     curve_labels = np.array([0, 0, 0, 1, 1, 0, 0])
-    curve_label_change = curve_labels.copy()
-    curve_label_change[0] = 1
     for boundary_gap in boundary_gaps:
         boundary_points = np.array(
             [
@@ -1427,81 +1473,91 @@ def run_e6() -> None:
         )
         boundary_query = np.zeros((1, 2), dtype=float)
         base_cache = build_neighbor_cache(boundary_points, boundary_query, 5)
-        base_prediction, base_counts, _ = predict_from_neighbors(
-            curve_labels, base_cache.indices, classes=[0, 1], tie_priority=[0, 1]
-        )
-        fixed_label_prediction, _, _ = predict_from_neighbors(
-            curve_label_change, base_cache.indices, classes=[0, 1], tie_priority=[0, 1]
-        )
         for displacement_radius in displacement_radii:
-            target_inside = 0
-            candidate_one_hits = 0
-            exchanges = 0
-            label_only_changed = 0
-            geometry_changed = 0
-            combined_changed = 0
             trials = 2000
-            for _ in range(trials):
-                moved_points = boundary_points.copy()
-                angle = curve_rng.uniform(-np.pi, np.pi)
-                moved_points[0] += displacement_radius * np.array(
-                    [np.cos(angle), np.sin(angle)]
+            angles = curve_rng.uniform(-np.pi, np.pi, size=trials)
+            for candidate_label_mode in (0, 1):
+                candidate_labels = curve_labels.copy()
+                candidate_labels[[1, 6]] = candidate_label_mode
+                joint_labels = candidate_labels.copy()
+                joint_labels[0] = 1
+                base_prediction, base_counts, _ = predict_from_neighbors(
+                    candidate_labels, base_cache.indices, classes=[0, 1], tie_priority=[0, 1]
                 )
-                moved_cache = build_neighbor_cache(moved_points, boundary_query, 5)
-                geometry_prediction, _, _ = predict_from_neighbors(
-                    curve_labels, moved_cache.indices, classes=[0, 1], tie_priority=[0, 1]
+                fixed_label_prediction, _, _ = predict_from_neighbors(
+                    joint_labels, base_cache.indices, classes=[0, 1], tie_priority=[0, 1]
                 )
-                combined_prediction, _, _ = predict_from_neighbors(
-                    curve_label_change, moved_cache.indices, classes=[0, 1], tie_priority=[0, 1]
+                target_inside = 0
+                candidate_entry = 0
+                candidate_one_hits = 0
+                exchanges = 0
+                label_only_changed = 0
+                geometry_changed = 0
+                combined_changed = 0
+                analytic_geometry_changed = 0
+                for angle in angles:
+                    moved_points = boundary_points.copy()
+                    moved_points[0] += displacement_radius * np.array(
+                        [np.cos(angle), np.sin(angle)]
+                    )
+                    moved_cache = build_neighbor_cache(moved_points, boundary_query, 5)
+                    neighbor_set = set(int(index) for index in moved_cache.indices[0])
+                    geometry_prediction, _, _ = predict_from_neighbors(
+                        candidate_labels, moved_cache.indices, classes=[0, 1], tie_priority=[0, 1]
+                    )
+                    combined_prediction, _, _ = predict_from_neighbors(
+                        joint_labels, moved_cache.indices, classes=[0, 1], tie_priority=[0, 1]
+                    )
+                    target_is_inside = 0 in neighbor_set
+                    candidate_is_present = bool(neighbor_set.intersection({1, 6}))
+                    target_inside += int(target_is_inside)
+                    candidate_entry += int(candidate_is_present)
+                    candidate_one_hits += int(6 in neighbor_set)
+                    exchanges += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
+                    label_only_changed += int(fixed_label_prediction[0] != base_prediction[0])
+                    geometry_changed += int(geometry_prediction[0] != base_prediction[0])
+                    combined_changed += int(combined_prediction[0] != base_prediction[0])
+                    # Direct vote counting is an analytic check on the
+                    # classifier result for the realized neighbor set.
+                    counts = np.bincount(candidate_labels[moved_cache.indices[0]], minlength=2)
+                    analytic_prediction = int(np.argmax(counts))
+                    analytic_geometry_changed += int(analytic_prediction != int(base_prediction[0]))
+                candidate_entry_rate = candidate_entry / trials
+                target_rate = target_inside / trials
+                if abs(candidate_entry_rate - (1.0 - target_rate)) > 1e-12:
+                    raise RuntimeError("E6 candidate-entry identity failed")
+                rows.append(
+                    {
+                        "perturbation": "four_state_motion_probability_curve",
+                        "curve_parameterization": "random_angle_displacement_shared_draws",
+                        "shared_draw_seed": 20261017,
+                        "boundary_gap": boundary_gap,
+                        "delta": displacement_radius,
+                        "displacement_regime": "small" if displacement_radius <= 0.20 else "large",
+                        "trials": trials,
+                        "k": 5,
+                        "pre_change_vote_gap": int(top_two_gap(base_counts)[0]),
+                        "baseline_prediction": base_prediction[0],
+                        "fixed_label_prediction_changed": bool(fixed_label_prediction[0] != base_prediction[0]),
+                        "label_target_index": 0,
+                        "moved_prototype_index": 0,
+                        "candidate_indices": "1,6",
+                        "candidate_labels": f"{candidate_label_mode},{candidate_label_mode}",
+                        "candidate_label_mode": str(candidate_label_mode),
+                        "candidate_entry_rate": candidate_entry_rate,
+                        "candidate_in_neighbor_rate": candidate_entry_rate,
+                        "candidate_one_in_neighbor_rate": candidate_one_hits / trials,
+                        "target_in_neighbor_rate": target_rate,
+                        "analytic_candidate_entry_rate": 1.0 - target_rate,
+                        "neighbor_exchange_rate": exchanges / trials,
+                        "label_only_prediction_changed_rate": label_only_changed / trials,
+                        "geometry_prediction_changed_rate": geometry_changed / trials,
+                        "analytic_geometry_prediction_changed_rate": analytic_geometry_changed / trials,
+                        "combined_prediction_changed_rate": combined_changed / trials,
+                        "motion_condition": "same_prototype_label_and_position",
+                        "intervention_model": "single_prototype_label_plus_position",
+                    }
                 )
-                target_inside += int(0 in moved_cache.indices[0])
-                candidate_one_hits += int(6 in moved_cache.indices[0])
-                exchanges += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
-                label_only_changed += int(fixed_label_prediction[0] != base_prediction[0])
-                geometry_changed += int(geometry_prediction[0] != base_prediction[0])
-                combined_changed += int(combined_prediction[0] != base_prediction[0])
-            rows.append(
-                {
-                    "perturbation": "four_state_motion_probability_curve",
-                    "curve_parameterization": "random_angle_displacement",
-                    "boundary_gap": boundary_gap,
-                    "delta": displacement_radius,
-                    "trials": trials,
-                    "k": 5,
-                    "pre_change_vote_gap": int(top_two_gap(base_counts)[0]),
-                    "baseline_prediction": base_prediction[0],
-                    "fixed_label_prediction_changed": bool(fixed_label_prediction[0] != base_prediction[0]),
-                    "label_target_index": 0,
-                    "moved_prototype_index": 0,
-                    "candidate_indices": "1,6",
-                    "candidate_labels": "0,0",
-                    "candidate_label_mode": "0",
-                    "candidate_in_neighbor_rate": (trials - target_inside) / trials,
-                    "candidate_one_in_neighbor_rate": candidate_one_hits / trials,
-                    "target_in_neighbor_rate": target_inside / trials,
-                    "neighbor_exchange_rate": exchanges / trials,
-                    "label_only_prediction_changed_rate": label_only_changed / trials,
-                    "geometry_prediction_changed_rate": geometry_changed / trials,
-                    "combined_prediction_changed_rate": combined_changed / trials,
-                    "motion_condition": "same_prototype_label_and_position",
-                    "intervention_model": "single_prototype_label_plus_position",
-                }
-            )
-            # Reuse the identical geometric draws as a label-1 candidate
-            # control.  This makes the geometry-only state observable while
-            # the primary same-label control keeps the joint curve variable.
-            candidate_control = dict(rows[-1])
-            candidate_control.update(
-                {
-                    "candidate_labels": "1,1",
-                    "candidate_label_mode": "1",
-                    "candidate_one_in_neighbor_rate": candidate_control["candidate_in_neighbor_rate"],
-                    "geometry_prediction_changed_rate": candidate_control["candidate_in_neighbor_rate"],
-                    "combined_prediction_changed_rate": 1.0,
-                    "intervention_model": "single_prototype_label_plus_position_candidate_label_control",
-                }
-            )
-            rows.append(candidate_control)
 
     # Forty thousand random checks of the conservative G>2 certificate.
     rng = np.random.default_rng(20260614)
@@ -2048,6 +2104,46 @@ def run_e9() -> None:
             overlap_mode=mode,
             timing_repeats=2,
             dense_repeats=1,
+            mc_repeats=2,
+        )
+
+    # Control 3: hold the query count, training size, and query-overlap edge
+    # fraction fixed while sweeping k.  Queries are grouped into blocks of
+    # eight; only queries in the same block share prototypes, so the overlap
+    # graph has the same edge fraction at every k.  The benchmark is intended
+    # to locate the practical crossover, if any, rather than infer runtime
+    # from asymptotic notation alone.
+    sweep_n, sweep_q = 2048, 40
+    sweep_y = np.random.default_rng(20261012).integers(0, 2, size=sweep_n)
+    sweep_probabilities = np.full(sweep_n, 0.05)
+    for sweep_k in (3, 5, 7, 11, 15, 31):
+        block_size = 8
+        shared_count = max(1, int(round(0.40 * sweep_k)))
+        unique_count = sweep_k - shared_count
+        block_count = sweep_q // block_size
+        shared_ids = np.arange(block_count * shared_count, dtype=int).reshape(
+            block_count, shared_count
+        )
+        next_unique = int(shared_ids.max()) + 1
+        sweep_neighbors = np.empty((sweep_q, sweep_k), dtype=int)
+        for query_index in range(sweep_q):
+            block = query_index // block_size
+            unique_ids = np.arange(next_unique, next_unique + unique_count, dtype=int)
+            next_unique += unique_count
+            sweep_neighbors[query_index] = np.concatenate((shared_ids[block], unique_ids))
+        append_probability_panel(
+            benchmark_family="shared_probability_k_sweep",
+            panel="fixed_query_fixed_overlap_rate_k_sweep",
+            n=sweep_n,
+            q=sweep_q,
+            k=sweep_k,
+            neighbors=sweep_neighbors,
+            y_train=sweep_y,
+            probabilities=sweep_probabilities,
+            seed=20261012 + sweep_k,
+            overlap_mode="eight_query_blocks",
+            timing_repeats=3,
+            dense_repeats=2,
             mc_repeats=2,
         )
     save_csv(PROCESSED_DIR / "e9_runtime.csv", rows)

@@ -2,7 +2,7 @@
 
 This repository provides the reproducible implementation for **Auditing Prototype Replacement Vulnerability in kNN Classification: Exact Influence, Probabilistic Stability, and Label Review**.
 
-The central analysis distinguishes deleted-point leave-one-out recovery error from retained-prototype relabeling vulnerability.  It implements exact directional influence, point-level vulnerability, vote-margin diagnostics, probabilistic stability under label flips, query-neighborhood overlap-graph variance, an exact shared/unique Poisson-binomial factorization, finite-noise variance validation, and four-state geometry-change probability curves.
+The central analysis distinguishes deleted-point leave-one-out recovery error from retained-prototype relabeling vulnerability.  It implements exact directional influence, point-level vulnerability, vote-margin diagnostics, probabilistic stability under label flips, query-neighborhood overlap-graph variance, an exact shared/unique Poisson-binomial factorization, finite-noise variance validation, four-state geometry-change probability curves, randomized tie-order sensitivity, and fixed-query/fixed-overlap-rate runtime audits.
 
 ## Repository contents
 
@@ -35,7 +35,9 @@ python figures/scripts/build_revision_figures.py
 
 The experiment runner writes audit tables and run metadata under `results/`.  The figure builder reads the processed tables and writes panels under `figures/`.  To select a subset of experiments, pass names such as `--experiments e1 e2 e3 e6`.
 
-E0 reports both the same-split implementation audit and the historical comparison status.  To reproduce the historical join, set `KNN_BASELINE_TABLE_DIR` to a directory containing `paa_multiclass_benchmark.csv` before running E0.  The runner records the resulting status in `results/processed/e0_reproduction_status.json` and writes an explicit missing-key audit.  E3 includes exact finite-noise checks at five flip probabilities, a controlled same-$k$ concentration pair, and the factorized overlap calculation; E6 includes the controlled enter/stay/exit audit and a 70-row four-state random-angle displacement curve with two candidate-label controls on the same prototype.  E9 compares dense--2D, sparse--2D, dense--1D, and sparse--1D exact probability paths on identical inputs.
+E0 reports both the same-split implementation audit and the historical comparison status.  To reproduce the historical join, set `KNN_BASELINE_TABLE_DIR` to a directory containing `paa_multiclass_benchmark.csv` before running E0.  The runner records the resulting status in `results/processed/e0_reproduction_status.json` and writes an explicit missing-key audit.  E3 includes exact finite-noise checks at five flip probabilities, a controlled same-$k$ concentration pair, and the factorized overlap calculation; E5 includes randomized ordering within exact score ties; E6 includes the controlled enter/stay/exit audit and a 70-row four-state random-angle displacement curve with two same-label candidate controls on the same prototype.  E9 compares dense--2D, sparse--2D, dense--1D, and sparse--1D exact probability paths on identical inputs and includes a fixed-query, fixed-overlap-edge-fraction sweep over $k=3,5,7,11,15,31$.
+
+The public release corresponds to the manuscript revision tag `paa-revision-2026-10-09-v9`.  The experiment runner and figure builder use portable relative paths and acquire benchmark data through the documented acquisition script.
 
 The test suite includes a complete small-state check for the first-order
 batch-variance expansion and randomized equivalence checks for the factorized
