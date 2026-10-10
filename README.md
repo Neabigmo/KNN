@@ -1,50 +1,102 @@
-# Auditing kNN Predictions under Prototype Relabeling
+# Online Resource 1: Reproducible code and processing package
 
-This repository provides the reproducibility code for directional training-label edits in k-nearest-neighbor classification. It records which query predictions change after an admissible edit and calculates how shared training neighbors couple those changes across a query batch under specified independent binary label-flip probabilities.
+This supplementary archive accompanies the edited manuscript and contains the frozen numerical records, reproducibility code, acquisition instructions, proofs, tests, and regenerated publication-quality figure exports. The figure presentation uses the same experimental measurements as the frozen computational baseline.
 
-## Repository contents
+This standalone package accompanies the revised manuscript **Leave-One-Out Recovery and Batch Sensitivity to Prototype Relabeling in kNN** by Yiheng Yang and Zhenzhou Feng.
 
-- `src/knn_reliability/`: deterministic kNN, influence, geometry, probability, and audit utilities.
-- `scripts/acquire_data.py`: dataset acquisition and synthetic-data generation with a reproducible manifest.
-- `experiments/run_revision_experiments.py`: E0--E9 experiment runner used by the revision protocol.
-- `figures/scripts/build_revision_figures.py`: figure-generation script driven by experiment outputs; the released figures use controlled influence/variance panels, class-by-$k$ frequency summaries, within-dataset medians with exact Q25--Q75 intervals, geometry-operation heatmaps, and common-direction runtime ratios. Main-panel provenance tables are written alongside the figures, with supplementary validation rows kept separate.
-- `analyses/`: the E3 batch-dependence audit and exact finite-state counterexamples used by the reframed revision.
-- `tests/`: 30 regression, exactness, and input-contract tests for the kNN, influence, geometry, and probability implementations.
-- `theory/`: theorem proofs, including the finite graph-metric LOO blind-spot construction for every `k >= 1`, complexity notes, novelty matrix, and theory verification record.
+The public source repository is [github.com/Neabigmo/KNN](https://github.com/Neabigmo/KNN).
 
-## Data sources
+## Contents
 
-The acquisition script obtains the benchmark panel from:
+- `src/knn_reliability/`: deterministic kNN, LOO, exact directional influence, probability, geometry, and policy utilities, including the exact query-neighborhood overlap-graph batch-moment engine and shared/unique Poisson-binomial factorization.
+- `experiments/run_revision_experiments.py`: E0--E9 experiment runner.
+- `results/processed/`: regenerated result tables and audit summaries used by the manuscript.
+- `figures/scripts/`, `figures/data/`, and `figures/export/`: figure builder, panel data, and exported figures. Main-panel CSVs contain only plotted rows; supplementary validation rows are kept in explicitly named supplement CSVs.
+- `release/generate_frozen_results.py`: deterministic generator for the manuscript result macros from `results/processed/`.
+- `release/check_submission_consistency.py`: cross-checks frozen E5 macros, manuscript text, response text, Fig. 2 analytic provenance, Fig. 5 statistics, controlled Fig. 4 source structures, plotted panel methods, Fig. 6 provenance, Fig. 7 configuration labels and ratio direction, and E6 audit fields.
+- `release/check_figure_pdf.py`: checks final-size plot text extracted from the compiled manuscript PDF.
+- `release/check_figure_collisions.py`: reports overlapping figure words in the compiled manuscript PDF and fails when both the intersection area and the relative overlap of the smaller text box exceed the documented limits.
+- `release/make_figure_overview.py`: builds a contact sheet of the seven exported figures for visual review.
+- `data_registry/`: the 23-dataset provenance registry and hashes used by the acquisition workflow.
+- `scripts/`: acquisition and processing instructions for the sklearn, synthetic, and OpenML sources.
+- `legacy_tables/`: archived comparison tables used only by E0.
+- `theory/`: proofs, including the all-`k >= 1` finite deletion--relabeling separation with an observed replacement label, claim registry, novelty matrix, and literature registry.
+- `tests/`: 30 regression and cross-metric consistency tests.
+- `Online_Resource_1_overview.pdf`: the citable overview of this resource.
 
-- scikit-learn built-in loaders: Iris, Wine, Breast Cancer Wisconsin, and Digits;
-- scikit-learn generators: two moons, concentric circles, four blobs, and the configured classification panels;
-- OpenML datasets: Dermatology (`data_id=32`), Diabetes (`37`), Haberman (`43`), Heart Statlog (`53`), Ionosphere (`59`), Parkinsons (`148`), Segment (`36`), Sonar (`40`), and Vehicle (`54`).
+The probability implementation constructs the query-neighborhood overlap graph,
+uses marginal products for disjoint query pairs, and evaluates joint dynamic
+programs only on overlap edges.  E3 additionally validates exact finite-noise
+variance against the first-order approximation at five flip probabilities on
+multiple benchmark neighborhood structures, plus a controlled same-$k$,
+same-query-count concentration pair.  E6 includes a controlled low/mid/high
+vote-gap enter/stay/exit diagnostic and a 70-row four-state random-angle curve
+over displacement radius and boundary gap, with 35 identical geometric settings
+under each same-label candidate condition ($0,0$ and $1,1$); these are exact
+or conditional audit procedures, not universal robustness claims.  E5 uses
+reproducible random ordering within exact score ties and includes a separate
+tie-sensitivity table.  E9 includes a fixed-query, fixed-overlap-edge-fraction
+sweep over $k=3,5,7,11,15,31$.
 
-## Reproduce the analyses
+- `analyses/`: a pre-specified reinterpretation of existing E3 probability records (68 independent-flip configurations), the query-independence reference, and two exact finite-state witnesses; the source datasets have not been expanded.
 
-From the repository root:
+## Portable execution
 
-```bash
-python -m pip install -r requirements.txt
-python scripts/acquire_data.py --output-dir data/processed
+From this directory, use Python >= 3.10 with NumPy, scikit-learn, Matplotlib, and pytest.  The included `pyproject.toml` declares the core dependency; `requirements.txt` lists the complete verification environment.
+
+PowerShell:
+
+```powershell
+$data_dir = Join-Path (Get-Location) 'data_generated'
+$env:KNN_DATA_DIR = $data_dir
+$env:KNN_BASELINE_TABLE_DIR = (Join-Path (Get-Location) 'legacy_tables')
+$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
+python scripts/acquire_data.py --output-dir $data_dir
 python -m pytest
-python experiments/run_revision_experiments.py
+python experiments/run_revision_experiments.py --experiments e1 e2 e3 e4 e5 e6 e7 e8 e9 e0
+python release/generate_frozen_results.py
 python figures/scripts/build_revision_figures.py
+powershell -ExecutionPolicy Bypass -File .\BUILD_AND_VERIFY.ps1
 ```
 
-The experiment runner writes audit tables and run metadata under `results/`.  The figure builder reads the processed tables and writes panels under `figures/`.  To select a subset of experiments, pass names such as `--experiments e1 e2 e3 e6`.
+`BUILD_AND_VERIFY.ps1` is a release-integrity check, not a substitute for the
+preceding raw-data experiment command: it runs the 30-test suite, validates
+recorded metadata and row counts, regenerates numerical macros and figures from
+the released processed records, checks manuscript/response consistency, and
+compiles the PDFs.  It does not independently rerun E0--E9 from raw data.
 
-E0 reports both the same-split implementation audit and the historical comparison status.  To reproduce the historical join, set `KNN_BASELINE_TABLE_DIR` to a directory containing `paa_multiclass_benchmark.csv` before running E0.  The runner records the resulting status in `results/processed/e0_reproduction_status.json` and writes an explicit missing-key audit.  E3 includes exact finite-noise checks at five flip probabilities, a controlled same-$k$ concentration pair, and the factorized overlap calculation; E5 includes randomized ordering within exact score ties; E6 includes the controlled enter/stay/exit audit and a 70-row four-state random-angle displacement curve with two same-label candidate controls on the same prototype.  E9 compares dense--2D, sparse--2D, dense--1D, and sparse--1D exact probability paths on identical inputs and includes a fixed-query, fixed-overlap-edge-fraction sweep over $k=3,5,7,11,15,31$.
+The acquisition command writes the processed panel to `data_generated/` and
+records the Python, NumPy, scikit-learn, generator seed, and frozen OpenML data
+IDs in `acquisition_metadata.json`.  The benchmark runner reads that directory
+through `KNN_DATA_DIR`, while `data_registry/` provides the registry and hash
+records.  E0 compares the revision tables with the archived CSV tables in
+`legacy_tables`; the other experiments read the generated panel through
+`KNN_DATA_DIR`.  The exact seed and split protocol is recorded in
+`results/raw/run_metadata.json`.
 
-Release `paa-revision-2026-10-10-v13` contains the code used for the current revision. The E6 implementation separates neighborhood membership exchange from within-neighborhood order changes, and E9 reports explicit pair scans, overlap-edge joint evaluations, and nonedge contributions aggregated without pairwise iteration. The experiment runner and figure builder use portable relative paths and acquire benchmark data through the documented acquisition script. The associated submission archive supplies frozen result tables, figure panels, and manuscript source.
+For a run without the archived baseline directory, E0 still produces the
+same-split implementation audit and writes `e0_reproduction_status.json` with
+an explicit historical-comparison status.  To reproduce that historical join,
+set `KNN_BASELINE_TABLE_DIR` to a directory containing
+`paa_multiclass_benchmark.csv` before running E0.
 
-Release `paa-revision-2026-10-10-v14-reframed` adds the two analysis programs used for the revised probability argument. `analyses/dependence_gap_audit.py` recomputes the existing E3 exact variances and compares them with the query-independent reference; `analyses/theory_counterexamples.py` enumerates the finite-state witnesses for identical single-edit rows and negative covariance. Both programs consume the documented acquisition and processing interfaces and write derived audit tables under `results/derived/`.
+To compare a regenerated panel against a private frozen audit cache, use:
 
-Release `paa-revision-2026-10-10-v15-all-k-reframed` synchronizes the public theory notes with the submission package. It records the finite shortest-path construction showing, for every `k >= 1`, that all training-point LOO predictions can be correct while one fixed-position prototype relabeling changes a separate query. The Euclidean ring/support construction remains a secondary `k >= 2` illustration.
+```powershell
+python scripts/acquire_data.py --output-dir data_generated --verify-dir <frozen_processed_directory>
+```
 
-The test suite includes a complete small-state check for the first-order
-batch-variance expansion and randomized equivalence checks for the factorized
-and dense joint-probability implementations.
-GitHub Actions
-runs it on Python 3.10 and 3.12.  `environment.yml` records the environment
-used for the release verification.
+The checker reports both exact array equality and numerical equality at
+absolute tolerance `1e-8`; final digits can differ across library builds even
+when the data are scientifically identical.
+
+For the additional E3 dependence sensitivity calculation, regenerate the built-in/synthetic datasets with `--skip-openml` and then run `python analyses/dependence_gap_audit.py`; run `python analyses/theory_counterexamples.py` for exhaustive finite-state examples. Both commands write to `results/derived/` without changing frozen E0--E9 tables.
+
+The submitted Online Resource does not contain the processed `.npz` arrays; they are reconstructed locally from the documented sources. Their recorded checksums are reference values, not evidence that a newly acquired cache is byte-identical.
+
+The public implementation is maintained at
+`https://github.com/Neabigmo/KNN`, release tag
+`paa-revision-2026-10-10-v15-all-k-reframed` (commit `bbfd704a128782c9c967fb2b23ba20d72f2880bf`). The directory manifest and release archive record the exact
+resource contents; the journal-hosted supplementary-file location, when
+assigned by the publisher, is the authoritative access location for this
+resource.

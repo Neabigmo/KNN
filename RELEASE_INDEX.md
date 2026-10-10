@@ -25,3 +25,14 @@ records the finite graph-metric construction for every `k >= 1`, in which all
 training-point LOO predictions are correct while a fixed-position prototype
 relabeling changes a separate query. The E3 analysis programs and frozen
 implementation from v14 are unchanged.
+
+## `paa-revision-2026-10-10-v16-common-edit-audit`
+
+This tag aligns the public implementation and theory notes with the final
+argument centered on one specified fixed-position label edit and its exact
+reach across a query batch. It records the distinction between per-query
+vulnerability and one-common-edit reach, treats LOO as deletion-based
+background, and presents finite-noise covariance as a conditional extension.
+The all-`k` finite separation now includes a remote opposite-label support
+cluster so the replacement label is observed in training even for `k=1`.
+No benchmark arrays or private frozen caches are included.

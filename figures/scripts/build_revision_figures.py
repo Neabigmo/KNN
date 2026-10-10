@@ -206,7 +206,7 @@ def fig1_framework() -> None:
             axes[2].text(column, row, str(int(compressed[row, column])), ha="center",
                          va="center", fontsize=12,
                          color="white" if compressed[row, column] else "#333333")
-    axes[2].set_title("shared-batch influence incidence", fontsize=11, pad=7)
+    axes[2].set_title("one edit across four queries", fontsize=11, pad=7)
     panel_label(axes[2], "c")
     xmin = float(points[:, 0].min() - 0.35)
     xmax = float(points[:, 0].max() + 0.35)
@@ -254,7 +254,7 @@ def fig1_framework() -> None:
          "base_votes": ":".join(map(str, base_counts[0])), "changed_votes": ":".join(map(str, relabel_counts[0])),
          "base_prediction": int(base_prediction[0]), "changed_prediction": int(relabel_prediction[0]),
          "loo_correct": loo_correct, "loo_total": len(points), "query_type": "query_1_of_shared_batch"},
-        {"panel": "c", "operation": "shared batch influence incidence",
+        {"panel": "c", "operation": "specified-edit incidence across the query batch",
          "k": k, "shared_prototypes": 2, "query_count": len(query_batch),
          "matrix_rows": influence_matrix.shape[0], "matrix_columns": influence_matrix.shape[1],
          "decisive_count_per_query": ":".join(map(str, influence_matrix.sum(axis=1).astype(int))),
