@@ -11,7 +11,7 @@ audit rather than a separate primary contribution.
 
 | Result or object | Classification | What prior work covers | What this revision claims |
 |---|---|---|---|
-| One-label binary odd-k pivotality | Direct consequence of majority voting | Classical Boolean influence and pivotal-variable theory | A kNN-specific exact implementation and identity for query/prototype incidence |
+| One-label binary odd-k pivotality | Direct consequence of majority voting | Classical Boolean influence and pivotal-variable theory | A kNN-specific exact implementation and the normalization $R_1=((k+1)/2)R_{point}H_{max}$ used to interpret the 23-dataset audit |
 | Multiclass directional replacement rule | New formulation for this fixed-neighborhood model | Multiclass vote-margin certificates and poisoning robustness | Exact rule under explicit allowed-label set and deterministic tie priority; no claim of new poisoning certification |
 | Query-level PRV versus maximum single-prototype influence | Core audit representation with an overlapping poisoning objective | Training-data influence covers individual and group effects; hubness work studies frequently reused neighbors; budget-one label poisoning can equal qR1 under aligned conditions | The full directional incidence matrix records a specified replacement label and its exact batch reach; the 23-dataset result characterizes how Rpoint and R1 differ, without claiming that individual-versus-group influence is a new concept |
 | Independent label-flip probability for one query | Direct Poisson-binomial derivation | Randomized-smoothing and noisy-label literature provide related robustness models | Exact conditional probability for fixed kNN positions and observed labels, with DP and enumeration checks |

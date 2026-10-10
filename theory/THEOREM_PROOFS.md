@@ -54,6 +54,23 @@ correctly recovered.  The two-dimensional ring/support construction below is
 an additional Euclidean realization for `k >= 2`, not the source of the
 all-`k` claim.
 
+For binary odd `k`, write `I_i` for the number of changed queries under the
+opposite-label edit at prototype `i`, and let `V_t` indicate whether query `t`
+is vulnerable. The pivotal identity gives
+
+`sum_i I_i = ((k+1)/2) sum_t V_t`.
+
+When `R_point > 0`, define `H_max = max_i I_i / sum_j I_j`. Since
+`R_1 = max_i I_i / q` and `R_point = sum_t V_t / q`, direct substitution yields
+
+`R_1 = ((k+1)/2) R_point H_max`.
+
+This exact normalization explains the common-edit reach through the vulnerable
+query fraction, the decisive-count factor, and incidence concentration. It is
+restricted to binary odd-`k` voting with admissible opposite-label edits; a
+multiclass directional concentration can be defined, but the same scalar
+identity does not generally follow.
+
 ## Proposition 1: exact multiclass one-label test
 
 Assume a query has current winner `a`, with count `v_a`, and a prototype in
@@ -182,7 +199,7 @@ votes is Poisson-binomial with success probabilities
 
 The dynamic program
 
-`D_0(0)=1`, `D_j(s)=D_{j-1}(s)(1-q_j)+D_{j-1}(s-1)q_j`
+`F_0(0)=1`, `F_j(s)=F_{j-1}(s)(1-q_j)+F_{j-1}(s-1)q_j`
 
 returns the exact mass of each post-flip vote count.  Summing masses whose
 deterministic vote winner differs from the baseline gives the exact query

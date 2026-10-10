@@ -96,7 +96,7 @@ The submitted Online Resource does not contain the processed `.npz` arrays; they
 
 The public implementation is maintained at
 `https://github.com/Neabigmo/KNN`, release tag
-`paa-revision-2026-10-10-v15-all-k-reframed` (commit `bbfd704a128782c9c967fb2b23ba20d72f2880bf`). The directory manifest and release archive record the exact
+`paa-revision-2026-10-10-v17-mechanism-decomposition`. The directory manifest and release archive record the exact
 resource contents; the journal-hosted supplementary-file location, when
 assigned by the publisher, is the authoritative access location for this
 resource.

@@ -363,6 +363,57 @@ def fig2_theory() -> None:
     save(fig, "fig2_exact_theory")
 
 
+def fig2_common_edit_reach() -> None:
+    """Contrast equal query vulnerability with different one-edit reach."""
+    shared = np.zeros((4, 12), dtype=int)
+    shared[:, :2] = 1
+    distributed = np.zeros((4, 12), dtype=int)
+    for query_index in range(4):
+        distributed[query_index, 3 * query_index:3 * query_index + 2] = 1
+
+    fig, axes = plt.subplots(1, 2, figsize=(6.3, 2.65), sharey=True)
+    binary_cmap = ListedColormap(["#f2f2f2", COLORS["exact"]])
+    rows = []
+    for axis, matrix, title, panel in (
+        (axes[0], shared, "concentrated incidences", "a"),
+        (axes[1], distributed, "distributed incidences", "b"),
+    ):
+        prototype_counts = matrix.sum(axis=0)
+        r_point = float(np.mean(matrix.sum(axis=1) > 0))
+        r_one = float(np.max(prototype_counts) / matrix.shape[0])
+        h_max = float(np.max(prototype_counts) / matrix.sum())
+        axis.imshow(matrix, cmap=binary_cmap, vmin=0, vmax=1, aspect="auto")
+        axis.set_title(
+            f"{title}\nRpoint={r_point:.0f}; Hmax={h_max:.3f}; R1={r_one:.2f}",
+            fontsize=10.5,
+        )
+        axis.set_xticks([0, 1, 3, 5, 7, 9, 11], ["1", "2", "4", "6", "8", "10", "12"])
+        axis.set_yticks(range(4), ["q1", "q2", "q3", "q4"])
+        axis.set_xlabel("prototype index")
+        for query_index in range(matrix.shape[0]):
+            for prototype_index in range(matrix.shape[1]):
+                value = int(matrix[query_index, prototype_index])
+                if value:
+                    axis.text(prototype_index, query_index, "1", ha="center", va="center", fontsize=10)
+                rows.append({
+                    "panel": panel,
+                    "structure": "concentrated" if panel == "a" else "distributed",
+                    "query_id": query_index + 1,
+                    "prototype_id": prototype_index + 1,
+                    "influence": value,
+                    "k": 3,
+                    "Rpoint": r_point,
+                    "Hmax": h_max,
+                    "R1": r_one,
+                    "source": "verified controlled incidence construction",
+                })
+        panel_label(axis, panel, x=-0.13, y=1.12)
+    axes[0].set_ylabel("query")
+    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.20, top=0.78, wspace=0.28)
+    write_panel("fig2_common_edit_reach.csv", rows)
+    save(fig, "fig2_common_edit_reach")
+
+
 def fig3_probability() -> None:
     rows = read_csv("e3_probability_risk.csv")
     finite_rows = read_csv("e3_finite_noise_validation.csv")
@@ -938,6 +989,7 @@ def fig7_efficiency_operations() -> None:
 def main() -> None:
     fig1_framework()
     fig2_theory()
+    fig2_common_edit_reach()
     fig3_probability()
     fig4_influence()
     fig5_audit()

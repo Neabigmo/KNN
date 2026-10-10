@@ -36,3 +36,11 @@ background, and presents finite-noise covariance as a conditional extension.
 The all-`k` finite separation now includes a remote opposite-label support
 cluster so the replacement label is observed in training even for `k=1`.
 No benchmark arrays or private frozen caches are included.
+
+## `paa-revision-2026-10-10-v17-mechanism-decomposition`
+
+This tag adds the exact binary odd-`k` normalization
+`R1=((k+1)/2) Rpoint Hmax`, the controlled equal-vulnerability/different-reach
+figure, and the synchronized claim documentation used in the final targeted
+revision. The figure and formula reuse the released deterministic influence
+records and introduce no new dataset or experimental protocol.
