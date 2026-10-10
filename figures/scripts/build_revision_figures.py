@@ -233,7 +233,7 @@ def fig1_framework() -> None:
         Line2D([0], [0], marker="*", color="black", linestyle="none", markersize=8,
                label="query"),
     ]
-    fig.legend(handles=class_handles, frameon=False, fontsize=10, ncol=3,
+    fig.legend(handles=class_handles, frameon=False, fontsize=11, ncol=3,
                loc="upper center", bbox_to_anchor=(0.5, 0.995),
                handletextpad=0.3, columnspacing=0.9)
     fig.subplots_adjust(left=0.10, right=0.98, bottom=0.10, top=0.84, wspace=0.34, hspace=0.90)
@@ -302,14 +302,14 @@ def fig2_theory() -> None:
         axis.set_xticks(range(len(k_values)), k_values)
         axis.set_yticks(range(len(classes)), classes)
         axis.set(xlabel="$k$", ylabel="number of classes", title=title)
-        axis.tick_params(labelsize=10)
+        axis.tick_params(labelsize=11)
         axis.title.set_size(11)
         axis.title.set_linespacing(1.3)
         panel_label(axis, label)
     cbar_axis = fig.add_axes([0.91, 0.57, 0.018, 0.28])
     cbar = fig.colorbar(image, cax=cbar_axis, ticks=[0, 0.5, 1])
-    cbar.set_label("rate", fontsize=10)
-    cbar.ax.tick_params(labelsize=10)
+    cbar.set_label("rate", fontsize=11)
+    cbar.ax.tick_params(labelsize=11)
 
     theta = np.linspace(0, 2 * np.pi, 200)
     axes[2].plot(np.cos(theta), np.sin(theta), color=COLORS["reference"], lw=1.0)
@@ -460,15 +460,15 @@ def fig3_probability() -> None:
     axes[3].set_title("exact versus first-order", fontsize=11)
     axes[3].set_ylim(bottom=0)
     for axis in axes[2:]:
-        axis.tick_params(labelsize=10)
+        axis.tick_params(labelsize=11)
     for axis in axes[2:]:
         axis.set_xscale("log")
         axis.set_xticks([0.001, 0.01, 0.05], ["0.001", "0.01", "0.05"])
-        axis.tick_params(axis="x", labelrotation=0, labelsize=10)
+        axis.tick_params(axis="x", labelrotation=0, labelsize=11)
     panel_label(axes[2], "c")
     panel_label(axes[3], "d")
     handles, labels = axes[2].get_legend_handles_labels()
-    fig.legend(handles, labels, frameon=False, fontsize=10, ncol=2,
+    fig.legend(handles, labels, frameon=False, fontsize=11, ncol=2,
                loc="lower center", bbox_to_anchor=(0.5, 0.045))
 
     finite_real = [r for r in finite_rows if r.get("structure_type") == "real_data"]
@@ -522,7 +522,7 @@ def fig4_influence() -> None:
         axis.errorbar(k_values, means, yerr=errors, fmt="o-", color=COLORS["exact"],
                       capsize=3, lw=1.25, ms=4)
         axis.set(xlabel="$k$", ylabel=ylabel, xticks=k_values)
-        axis.tick_params(labelsize=10)
+        axis.tick_params(labelsize=11)
         axis.xaxis.label.set_size(11)
         axis.yaxis.label.set_size(11)
         axis.grid(axis="y", color="#dddddd", linewidth=0.5)
@@ -559,8 +559,8 @@ def fig4_influence() -> None:
                          color="#111111", lw=2.1)
     paired_axis.axvline(0, color="#444444", lw=0.95, ls="--")
     paired_axis.set_yticks(range(3), [metric_labels[f] for f in show_fields])
-    paired_axis.tick_params(axis="y", labelsize=10)
-    paired_axis.tick_params(axis="x", labelsize=10)
+    paired_axis.tick_params(axis="y", labelsize=11)
+    paired_axis.tick_params(axis="x", labelsize=11)
     paired_axis.invert_yaxis()
     paired_axis.set_xlabel("paired dataset change, $k=15$ minus $k=3$")
     # Black bars mark medians; dataset identities are in the paired CSV.
@@ -669,8 +669,8 @@ def fig5_audit() -> None:
         accuracy_axis.set_xticks([5, 10, 20])
         accuracy_axis.axhline(0, color="black", lw=0.7)
         if column == 0:
-            selected_axis.set_ylabel("selected fraction\nmedian; Q25--Q75", fontsize=9.5)
-            accuracy_axis.set_ylabel("accuracy gain\nmedian; Q25--Q75", fontsize=9.5)
+            selected_axis.set_ylabel("selected fraction\nmedian; Q25--Q75", fontsize=10.5)
+            accuracy_axis.set_ylabel("accuracy gain\nmedian; Q25--Q75", fontsize=10.5)
         else:
             selected_axis.tick_params(axis="y", labelleft=False)
             accuracy_axis.tick_params(axis="y", labelleft=False)
@@ -693,7 +693,7 @@ def fig5_audit() -> None:
 
     handles, legend_labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, legend_labels, frameon=False, ncol=3, loc="lower center",
-               bbox_to_anchor=(0.5, 0.035), fontsize=10)
+               bbox_to_anchor=(0.5, 0.035), fontsize=11)
     fig.text(0.57, 0.205, "review budget (%)", ha="center", va="center", fontsize=10.5)
     fig.subplots_adjust(left=0.18, right=0.98, bottom=0.29, top=0.88, wspace=0.10, hspace=0.34)
     write_panel("fig5_audit_panels.csv", panel_rows)
@@ -743,8 +743,8 @@ def fig6_geometry_operations() -> None:
         panel_label(axis, panel)
     cbar_axis = fig.add_axes([0.90, 0.56, 0.018, 0.30])
     cbar = fig.colorbar(image, cax=cbar_axis, ticks=[0, 0.5, 1])
-    cbar.set_label("P(change)", fontsize=10)
-    cbar.ax.tick_params(labelsize=10)
+    cbar.set_label("P(change)", fontsize=11)
+    cbar.ax.tick_params(labelsize=11)
 
     summary_rows = [
         {"candidate_label_mode": "0", "metric": "geometry_prediction_changed_rate",
@@ -805,7 +805,7 @@ def fig6_geometry_operations() -> None:
                   title="weighted-vote diagnostics")
     ax_margin.title.set_size(10.5)
     ax_margin.title.set_linespacing(1.3)
-    ax_count.set_ylabel("vulnerable count", fontsize=10)
+    ax_count.set_ylabel("vulnerable count", fontsize=11)
     count_max = max(float(r["vulnerable_prototypes"]) for r in weighted)
     ax_count.set_ylim(0, count_max + 0.75)
     ax_count.set_yticks(range(0, int(count_max) + 1))
@@ -815,7 +815,7 @@ def fig6_geometry_operations() -> None:
     panel_label(ax_margin, "d", x=-0.14, y=1.20)
     write_panel("fig6_geometry_operations_panels.csv", rows_for_panel)
     write_panel("fig6_geometry_operations_summary.csv", summary_rows)
-    fig.legend(handles=case_handles, frameon=False, fontsize=10, ncol=3,
+    fig.legend(handles=case_handles, frameon=False, fontsize=11, ncol=3,
                loc="lower center", bbox_to_anchor=(0.5, 0.015),
                handletextpad=0.2, columnspacing=0.7)
     fig.subplots_adjust(left=0.13, right=0.87, bottom=0.20, top=0.88, wspace=0.46, hspace=0.85)
@@ -850,12 +850,12 @@ def fig7_efficiency_operations() -> None:
                            [float(all_configs[i]["naive_exhaustive_q3_seconds"]) - float(all_configs[i]["naive_exhaustive_seconds"]) for i in valid_positions]],
                      fmt="s", color=COLORS["reference"], capsize=2.5, label="copy reference")
     labels = [f"{r['n_train']}\n{r['n_query']}\n{r['k']}" for r in all_configs]
-    axes[0].set_xticks(positions, labels, rotation=0, ha="center", fontsize=9.3)
+    axes[0].set_xticks(positions, labels, rotation=0, ha="center", fontsize=11)
     axes[0].set(xlabel="measured configuration (n/q/k)", ylabel="runtime (s)")
     axes[0].xaxis.label.set_size(11)
     axes[0].set_yscale("log")
     axes[0].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
-    axes[0].legend(frameon=False, fontsize=10, ncol=2, loc="lower left", bbox_to_anchor=(0, 1.01),
+    axes[0].legend(frameon=False, fontsize=11, ncol=2, loc="lower left", bbox_to_anchor=(0, 1.01),
                    handletextpad=0.3, columnspacing=0.8)
     panel_label(axes[0], "a", x=-0.18, y=1.12)
     method_rows = {method: {int(r["k"]): r for r in k_sweep if r["method"] == method}
@@ -899,11 +899,11 @@ def fig7_efficiency_operations() -> None:
         axes[3].scatter(positions + offset, values, color=method_colors[method], s=34,
                         label=method_labels[method], zorder=4)
     axes[3].set_yscale("log")
-    axes[3].tick_params(labelsize=10)
+    axes[3].tick_params(labelsize=11)
     axes[3].tick_params(axis="y", labelsize=11)
     axes[3].xaxis.label.set_size(11)
     axes[3].yaxis.label.set_size(11)
-    axes[3].set_xticks(positions, ["D", "B", "C", "F"], fontsize=10.0)
+    axes[3].set_xticks(positions, ["D", "B", "C", "F"], fontsize=11.0)
     axes[3].set(xlabel="overlap mode (D/B/C/F)", ylabel="time / sparse--1D")
     axes[3].set_title(">1: slower", fontsize=11)
     axes[3].set_yticks([0.5, 1, 2, 4], ["0.5", "1", "2", "4"])
