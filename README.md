@@ -8,6 +8,7 @@ This repository provides the reproducibility code for directional training-label
 - `scripts/acquire_data.py`: dataset acquisition and synthetic-data generation with a reproducible manifest.
 - `experiments/run_revision_experiments.py`: E0--E9 experiment runner used by the revision protocol.
 - `figures/scripts/build_revision_figures.py`: figure-generation script driven by experiment outputs; the released figures use controlled influence/variance panels, class-by-$k$ frequency summaries, within-dataset medians with exact Q25--Q75 intervals, geometry-operation heatmaps, and common-direction runtime ratios. Main-panel provenance tables are written alongside the figures, with supplementary validation rows kept separate.
+- `analyses/`: the E3 batch-dependence audit and exact finite-state counterexamples used by the reframed revision.
 - `tests/`: 30 regression, exactness, and input-contract tests for the kNN, influence, geometry, and probability implementations.
 - `theory/`: theorem proofs, complexity notes, novelty matrix, and theory verification record.
 
@@ -36,6 +37,8 @@ The experiment runner writes audit tables and run metadata under `results/`.  Th
 E0 reports both the same-split implementation audit and the historical comparison status.  To reproduce the historical join, set `KNN_BASELINE_TABLE_DIR` to a directory containing `paa_multiclass_benchmark.csv` before running E0.  The runner records the resulting status in `results/processed/e0_reproduction_status.json` and writes an explicit missing-key audit.  E3 includes exact finite-noise checks at five flip probabilities, a controlled same-$k$ concentration pair, and the factorized overlap calculation; E5 includes randomized ordering within exact score ties; E6 includes the controlled enter/stay/exit audit and a 70-row four-state random-angle displacement curve with two same-label candidate controls on the same prototype.  E9 compares dense--2D, sparse--2D, dense--1D, and sparse--1D exact probability paths on identical inputs and includes a fixed-query, fixed-overlap-edge-fraction sweep over $k=3,5,7,11,15,31$.
 
 Release `paa-revision-2026-10-10-v13` contains the code used for the current revision. The E6 implementation separates neighborhood membership exchange from within-neighborhood order changes, and E9 reports explicit pair scans, overlap-edge joint evaluations, and nonedge contributions aggregated without pairwise iteration. The experiment runner and figure builder use portable relative paths and acquire benchmark data through the documented acquisition script. The associated submission archive supplies frozen result tables, figure panels, and manuscript source.
+
+Release `paa-revision-2026-10-10-v14-reframed` adds the two analysis programs used for the revised probability argument. `analyses/dependence_gap_audit.py` recomputes the existing E3 exact variances and compares them with the query-independent reference; `analyses/theory_counterexamples.py` enumerates the finite-state witnesses for identical single-edit rows and negative covariance. Both programs consume the documented acquisition and processing interfaces and write derived audit tables under `results/derived/`.
 
 The test suite includes a complete small-state check for the first-order
 batch-variance expansion and randomized equivalence checks for the factorized

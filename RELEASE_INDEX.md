@@ -10,3 +10,10 @@ and the common-direction runtime ratio panels with final-size layout checks.
 The figure builder keeps plotted rows and validation supplements distinct.
 The tag contains source code and reproducibility instructions; benchmark
 arrays and private frozen audit caches are acquired or supplied separately.
+
+## `paa-revision-2026-10-10-v14-reframed`
+
+This tag adds the E3 dependence-gap audit and the exact finite-state
+counterexample enumeration used by the reframed manuscript. It also records
+the corrected runtime interpretation: the factorized implementation does not
+show a consistent advantage across the tested configurations.

@@ -36,7 +36,9 @@ same overlap edges. The released table records pair_scan_count, joint_dp_count,
 explicit_independent_product_count, aggregated_nonedge_pair_count, and
 total_nonedge_pair_count. Thus scanning strategy and edge kernel are no
 longer conflated. The corrected timings do not show a 1D runtime advantage in
-the tested Python workloads.
+the tested Python workloads. One sparse configuration is modestly faster, so the
+appropriate conclusion is that the factorized implementation does not show a
+consistent runtime advantage across the tested configurations.
 
 The runtime experiment uses warm-up runs, repeated measurements, medians,
 quartiles, and a separate traced-peak-memory pass. It never labels a cached
