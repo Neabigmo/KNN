@@ -1,10 +1,12 @@
 import itertools
 
 import numpy as np
+import pytest
 
 from knn_reliability.knn import predict_from_counts
 from knn_reliability.probability import (
     batch_risk_moments,
+    batch_risk_moments_variant,
     binary_flip_probability,
     dense_batch_risk_moments,
     enumerate_shared_flip_moments,
@@ -116,6 +118,56 @@ def test_disjoint_batch_pairs_use_marginal_products():
     p0, p1 = moments.query_probabilities
     expected_variance = (p0 * (1.0 - p0) + p1 * (1.0 - p1)) / 4.0
     np.testing.assert_allclose(moments.variance, expected_variance)
+
+
+def test_all_variants_skip_joint_dp_for_disjoint_pairs():
+    y_train = np.array([0, 0, 1, 0, 1, 1])
+    neighbors = np.array([[0, 1, 2], [3, 4, 5]])
+    probabilities = np.full(len(y_train), 0.1)
+    for overlap_graph in (False, True):
+        for factorized_joint in (False, True):
+            moments = batch_risk_moments_variant(
+                y_train, neighbors, probabilities, classes=[0, 1],
+                overlap_graph=overlap_graph, factorized_joint=factorized_joint,
+            )
+            assert moments.joint_dp_count == 0
+            assert moments.pair_scan_count == (0 if overlap_graph else 1)
+            assert moments.explicit_independent_product_count == (0 if overlap_graph else 1)
+            assert moments.aggregated_nonedge_pair_count == (1 if overlap_graph else 0)
+            assert moments.total_nonedge_pair_count == 1
+
+
+def test_batch_validation_rejects_invalid_global_probabilities_and_duplicate_neighbors():
+    y_train = np.array([0, 0, 1, 0, 1, 1])
+    neighbors = np.array([[0, 1, 2], [3, 4, 5]])
+    for bad_probability in (np.nan, np.inf, -0.2, 1.2):
+        probabilities = np.full(len(y_train), 0.1)
+        probabilities[-1] = bad_probability
+        with pytest.raises(ValueError, match="flip_probabilities"):
+            batch_risk_moments(y_train, neighbors, probabilities, classes=[0, 1])
+    with pytest.raises(ValueError, match="must not repeat"):
+        batch_risk_moments(
+            y_train,
+            np.array([[0, 0, 2], [3, 4, 5]]),
+            np.full(len(y_train), 0.1),
+            classes=[0, 1],
+        )
+
+
+def test_public_factorized_wrapper_rejects_label_index_mismatch():
+    y_train = np.array([0, 0, 1, 0, 1, 1])
+    indices_q = np.array([0, 1, 2])
+    indices_r = np.array([3, 4, 5])
+    with pytest.raises(ValueError, match="labels_q"):
+        factorized_joint_binary_flip_probability(
+            np.array([1, 0, 1]),
+            y_train[indices_r],
+            indices_q,
+            indices_r,
+            y_train,
+            np.full(len(y_train), 0.1),
+            classes=[0, 1],
+        )
 
 
 def test_overlap_graph_matches_dense_pairwise_reference():

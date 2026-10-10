@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import ListedColormap
 from matplotlib.lines import Line2D
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, NullFormatter
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
@@ -158,7 +158,7 @@ def fig1_framework() -> None:
             [query[0, 1], points[neighbor_index, 1]],
             color="#999999", lw=0.8, ls="--", zorder=0,
         )
-    representative_labels = {1, 2, 3, 5}  # remaining support points share the same class
+    representative_labels = {1, 2}  # label only the two decisive prototypes
     for index, (x, y) in enumerate(points, start=1):
         if index in representative_labels:
             axes[0].text(x + 0.04, y + 0.04, f"$z_{index}$", fontsize=12)
@@ -225,7 +225,18 @@ def fig1_framework() -> None:
             spine.set_color("#bbbbbb")
     for spine in axes[2].spines.values():
         spine.set_color("#bbbbbb")
-    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.10, top=0.91, wspace=0.34, hspace=0.90)
+    class_handles = [
+        Line2D([0], [0], marker="o", color="none", markerfacecolor=COLORS["class0"],
+               markeredgecolor="white", markersize=6, label="class 0"),
+        Line2D([0], [0], marker="o", color="none", markerfacecolor=COLORS["class1"],
+               markeredgecolor="white", markersize=6, label="class 1"),
+        Line2D([0], [0], marker="*", color="black", linestyle="none", markersize=8,
+               label="query"),
+    ]
+    fig.legend(handles=class_handles, frameon=False, fontsize=10, ncol=3,
+               loc="upper center", bbox_to_anchor=(0.5, 0.995),
+               handletextpad=0.3, columnspacing=0.9)
+    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.10, top=0.84, wspace=0.34, hspace=0.90)
     write_panel("fig1_influence_matrix.csv", [
         {"query_id": query_index + 1, "prototype_id": prototype_index + 1,
          "influence": int(influence_matrix[query_index, prototype_index]),
@@ -318,7 +329,7 @@ def fig2_theory() -> None:
     axes[2].title.set_size(11)
     axes[2].set_xlim(-1.28, 1.28)
     axes[2].set_ylim(-1.28, 1.28)
-    panel_label(axes[2], "c")
+    panel_label(axes[2], "c", x=0.0, y=1.14)
 
     support_epsilon = np.arange(1, k + 1) * 0.01 / k
     axes[3].axvline(0, color=COLORS["reference"], lw=0.9, ls="--")
@@ -332,12 +343,15 @@ def fig2_theory() -> None:
     axes[3].title.set_linespacing(1.3)
     axes[3].set_xlim(-0.0015, 0.012)
     axes[3].set_xticks([0, 0.002, 0.006, 0.010], ["0", ".002", ".006", ".010"])
-    panel_label(axes[3], "d", x=-0.30)
+    panel_label(axes[3], "d", x=0.0, y=1.14)
 
     write_panel("fig2_theory_panels.csv", [
         *count_rows,
-        {"panel": "c", "n": len(e1), "exact_reference": "zero mismatches", "band_false_negatives": "zero",
-         "source": "e1_vote_configurations.csv"},
+        {"panel": "c", "k": 5, "ring_radius": 1.0, "support_offset_max": 0.01,
+         "representatives": 5, "supports_per_representative": 5,
+         "source": "figures/scripts/build_revision_figures.py",
+         "source_row": "fig2_theory: ring/support construction",
+         "transformation": "analytic coordinates on five radial rays; controlled geometry construction"},
         {"panel": "d", "k": 5, "epsilon": ".002:.004:.006:.008:.010",
          "supports_per_representative": 5, "source": "constructed from verified geometry"},
     ])
@@ -345,7 +359,7 @@ def fig2_theory() -> None:
         {"panel": "supplement", "rows": len(e4), "model": "random training labels",
          "source": "e4_distribution_stability.csv", **row} for row in e4
     ])
-    fig.subplots_adjust(left=0.10, right=0.87, bottom=0.10, top=0.90, wspace=0.38, hspace=0.62)
+    fig.subplots_adjust(left=0.10, right=0.87, bottom=0.10, top=0.90, wspace=0.38, hspace=0.78)
     save(fig, "fig2_exact_theory")
 
 
@@ -449,7 +463,8 @@ def fig3_probability() -> None:
         axis.tick_params(labelsize=10)
     for axis in axes[2:]:
         axis.set_xscale("log")
-        axis.set_xticks(epsilons, [f"{value:g}" for value in epsilons])
+        axis.set_xticks([0.001, 0.01, 0.05], ["0.001", "0.01", "0.05"])
+        axis.tick_params(axis="x", labelrotation=0, labelsize=10)
     panel_label(axes[2], "c")
     panel_label(axes[3], "d")
     handles, labels = axes[2].get_legend_handles_labels()
@@ -464,7 +479,7 @@ def fig3_probability() -> None:
          "first_order_variance": r["first_order_variance"], "source": "e3_finite_noise_validation.csv",
          "transformation": "retained by dataset and k; not plotted in Fig. 4"} for r in finite_real
     ])
-    fig.subplots_adjust(left=0.12, right=0.97, bottom=0.29, top=0.91, wspace=0.36, hspace=0.62)
+    fig.subplots_adjust(left=0.12, right=0.97, bottom=0.29, top=0.91, wspace=0.40, hspace=0.62)
     save(fig, "fig4_probability_stability")
 
 
@@ -472,15 +487,15 @@ def fig4_influence() -> None:
     """Report means, uncertainty, and a legible paired-dataset distribution."""
     rows = [r for r in read_csv("e2_deterministic_influence.csv") if r["split"] == "test"]
     metrics = [
-        ("point_prv", r"$R_{\mathrm{point}}$", "point vulnerability"),
-        ("r1", "$R_1$", "global single-relabel risk"),
-        ("influence_concentration", "influence concentration", "max prototype share"),
+        ("point_prv", "point risk", "point vulnerability"),
+        ("r1", "global risk", "global single-relabel risk"),
+        ("influence_concentration", "max share", "max prototype share"),
         ("loo_error", "LOO error", "deleted-point recovery error"),
     ]
     k_values = sorted({int(row["k"]) for row in rows})
     summary_rows = []
     fig = plt.figure(figsize=(6.3, 5.7))
-    layout = fig.add_gridspec(3, 2, height_ratios=[1, 1, 0.85], hspace=0.50, wspace=0.34)
+    layout = fig.add_gridspec(3, 2, height_ratios=[1, 1, 0.90], hspace=0.78, wspace=0.42)
     axes = [fig.add_subplot(layout[0, 0]), fig.add_subplot(layout[0, 1]),
             fig.add_subplot(layout[1, 0]), fig.add_subplot(layout[1, 1]),
             fig.add_subplot(layout[2, :])]
@@ -507,11 +522,11 @@ def fig4_influence() -> None:
         axis.errorbar(k_values, means, yerr=errors, fmt="o-", color=COLORS["exact"],
                       capsize=3, lw=1.25, ms=4)
         axis.set(xlabel="$k$", ylabel=ylabel, xticks=k_values)
-        axis.tick_params(labelsize=16)
-        axis.xaxis.label.set_size(16)
-        axis.yaxis.label.set_size(17)
+        axis.tick_params(labelsize=10)
+        axis.xaxis.label.set_size(11)
+        axis.yaxis.label.set_size(11)
         axis.grid(axis="y", color="#dddddd", linewidth=0.5)
-        panel_label(axis, label)
+        panel_label(axis, label, x=-0.18, y=1.05)
     write_panel("fig3_deterministic_influence_panels.csv", summary_rows)
     paired_rows = []
     dataset_names = sorted({row["dataset"] for row in rows})
@@ -528,7 +543,7 @@ def fig4_influence() -> None:
                 })
     paired_axis = axes[4]
     metric_colors = {"point_prv": COLORS["exact"], "r1": COLORS["approximation"], "loo_error": COLORS["exposure"]}
-    metric_labels = {"point_prv": r"$R_{\mathrm{point}}$", "r1": r"$R_1$", "loo_error": "LOO error"}
+    metric_labels = {"point_prv": "point risk", "r1": "global risk", "loo_error": "LOO error"}
     show_fields = ("point_prv", "r1", "loo_error")
     # Plot each of the 23 paired dataset differences without illegible name ticks.
     # The unabridged dataset identities remain in the panel CSV.
@@ -542,31 +557,17 @@ def fig4_influence() -> None:
         median = float(np.median(values))
         paired_axis.plot([median, median], [index - 0.25, index + 0.25],
                          color="#111111", lw=2.1)
-    label_map = {
-        "digits_0_vs_8": "Digits",
-        "breast_cancer_wisconsin": "Breast",
-        "ionosphere": "Ionosphere",
-    }
-    for dataset, label in label_map.items():
-        if dataset not in dataset_names:
-            continue
-        value = next(float(x["delta"]) for x in paired_rows
-                     if x["dataset"] == dataset and x["metric"] == "point_prv")
-        index = dataset_names.index(dataset)
-        jitter = 0.12 * np.sin(index * 2.399963)
-        paired_axis.annotate(label, xy=(value, jitter), xytext=(4, 6 if index % 2 else -12),
-                             textcoords="offset points", fontsize=10, color="#333333",
-                             arrowprops={"arrowstyle": "-", "color": "#aaaaaa", "lw": 0.5})
     paired_axis.axvline(0, color="#444444", lw=0.95, ls="--")
     paired_axis.set_yticks(range(3), [metric_labels[f] for f in show_fields])
-    paired_axis.tick_params(axis="y", labelsize=16)
+    paired_axis.tick_params(axis="y", labelsize=10)
+    paired_axis.tick_params(axis="x", labelsize=10)
     paired_axis.invert_yaxis()
     paired_axis.set_xlabel("paired dataset change, $k=15$ minus $k=3$")
     # Black bars mark medians; dataset identities are in the paired CSV.
     paired_axis.grid(axis="x", color="#dddddd", lw=0.5)
     # The long vertical y-axis label occupies the left gutter; place the
     # panel marker in the reserved top margin instead of over that label.
-    panel_label(paired_axis, "e", x=0.0, y=1.10)
+    panel_label(paired_axis, "e", x=-0.08, y=1.04)
     write_panel("fig3_deterministic_influence_paired.csv", paired_rows)
     save(fig, "fig3_deterministic_influence")
 
@@ -665,7 +666,6 @@ def fig5_audit() -> None:
         selected_axis.set_title(short_title, fontsize=10.5, pad=8)
         selected_axis.set_xticks([5, 10, 20])
         selected_axis.tick_params(axis="x", labelbottom=False)
-        selected_axis.set_ylim(bottom=0)
         accuracy_axis.set_xticks([5, 10, 20])
         accuracy_axis.axhline(0, color="black", lw=0.7)
         if column == 0:
@@ -677,13 +677,25 @@ def fig5_audit() -> None:
         panel_label(selected_axis, chr(ord("a") + column))
         # Keep bottom-row markers above the axes so they do not collide with
         # the first y tick at the left edge.
-        panel_label(accuracy_axis, chr(ord("d") + column), x=0.0, y=1.08)
+        panel_label(accuracy_axis, chr(ord("d") + column), x=0.0, y=1.04)
+
+    for selected_axis in axes[0]:
+        selected_axis.set_ylim(0, 1)
+    for row in panel_rows:
+        if row["metric"] != "selected_corrupted_fraction":
+            continue
+        for field in ("q25", "median", "q75"):
+            value = float(row[field])
+            if not 0.0 <= value <= 1.0:
+                raise AssertionError(
+                    f"Fig. 5 {field} outside the selected-fraction axis: {value}"
+                )
 
     handles, legend_labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, legend_labels, frameon=False, ncol=3, loc="lower center",
                bbox_to_anchor=(0.5, 0.035), fontsize=10)
     fig.text(0.57, 0.205, "review budget (%)", ha="center", va="center", fontsize=10.5)
-    fig.subplots_adjust(left=0.18, right=0.98, bottom=0.29, top=0.88, wspace=0.10, hspace=0.18)
+    fig.subplots_adjust(left=0.18, right=0.98, bottom=0.29, top=0.88, wspace=0.10, hspace=0.34)
     write_panel("fig5_audit_panels.csv", panel_rows)
     save(fig, "fig5_label_audit")
 
@@ -790,20 +802,23 @@ def fig6_geometry_operations() -> None:
             ])
     ax_margin.axhline(0, color=COLORS["reference"], lw=0.8)
     ax_margin.set(xlabel="inverse-distance power", ylabel="weighted margin",
-                  title="weighted diagnostics\ndots = margin; squares = count")
+                  title="weighted-vote diagnostics")
     ax_margin.title.set_size(10.5)
     ax_margin.title.set_linespacing(1.3)
-    ax_count.set_ylabel("vulnerable prototypes", fontsize=11)
+    ax_count.set_ylabel("vulnerable count", fontsize=10)
+    count_max = max(float(r["vulnerable_prototypes"]) for r in weighted)
+    ax_count.set_ylim(0, count_max + 0.75)
+    ax_count.set_yticks(range(0, int(count_max) + 1))
     ax_margin.set_xticks([0, 1, 2])
     case_handles = [Line2D([0], [0], marker="o", color=case_colors[case], linestyle="none",
                             markersize=5, label=case.replace("_", " ")) for case in case_order]
-    panel_label(ax_margin, "d", x=-0.30)
+    panel_label(ax_margin, "d", x=-0.14, y=1.20)
     write_panel("fig6_geometry_operations_panels.csv", rows_for_panel)
     write_panel("fig6_geometry_operations_summary.csv", summary_rows)
     fig.legend(handles=case_handles, frameon=False, fontsize=10, ncol=3,
                loc="lower center", bbox_to_anchor=(0.5, 0.015),
                handletextpad=0.2, columnspacing=0.7)
-    fig.subplots_adjust(left=0.13, right=0.87, bottom=0.20, top=0.88, wspace=0.48, hspace=0.85)
+    fig.subplots_adjust(left=0.13, right=0.87, bottom=0.20, top=0.88, wspace=0.46, hspace=0.85)
     save(fig, "fig6_geometry_operations")
 
 
@@ -813,13 +828,13 @@ def fig7_efficiency_operations() -> None:
     k_sweep = [r for r in runtime_rows if r.get("benchmark_family") == "shared_probability_k_sweep"]
     fixed = [r for r in runtime_rows if r.get("benchmark_family") == "shared_probability_fixed_train"]
     overlap = [r for r in runtime_rows if r.get("benchmark_family") == "shared_probability_overlap_sweep"]
-    fig = plt.figure(figsize=(6.3, 5.5))
-    layout = fig.add_gridspec(2, 3, height_ratios=[1.05, 1.0])
+    fig = plt.figure(figsize=(6.3, 5.7))
+    layout = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.0], hspace=0.72, wspace=0.46)
     axes = [
-        fig.add_subplot(layout[0, :]),
+        fig.add_subplot(layout[0, 0]),
+        fig.add_subplot(layout[0, 1]),
         fig.add_subplot(layout[1, 0]),
         fig.add_subplot(layout[1, 1]),
-        fig.add_subplot(layout[1, 2]),
     ]
     config_rows = [r for r in deterministic if r["naive_status"] == "completed"]
     all_configs = sorted(deterministic, key=lambda r: (int(r["n_train"]), int(r["k"])))
@@ -834,15 +849,15 @@ def fig7_efficiency_operations() -> None:
                      yerr=[[float(all_configs[i]["naive_exhaustive_seconds"]) - float(all_configs[i]["naive_exhaustive_q1_seconds"]) for i in valid_positions],
                            [float(all_configs[i]["naive_exhaustive_q3_seconds"]) - float(all_configs[i]["naive_exhaustive_seconds"]) for i in valid_positions]],
                      fmt="s", color=COLORS["reference"], capsize=2.5, label="copy reference")
-    labels = [f"{r['n_train']}/{r['n_query']}/{r['k']}" for r in all_configs]
-    axes[0].set_xticks(positions, labels, rotation=0, ha="center", fontsize=10.5)
-    axes[0].set(xlabel=r"configuration $(n_{\mathrm{train}}/n_{\mathrm{query}}/k)$", ylabel="runtime (s)")
-    axes[0].xaxis.label.set_size(15)
+    labels = [f"{r['n_train']}\n{r['n_query']}\n{r['k']}" for r in all_configs]
+    axes[0].set_xticks(positions, labels, rotation=0, ha="center", fontsize=9.3)
+    axes[0].set(xlabel="measured configuration (n/q/k)", ylabel="runtime (s)")
+    axes[0].xaxis.label.set_size(11)
     axes[0].set_yscale("log")
     axes[0].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
-    axes[0].legend(frameon=False, fontsize=11, ncol=1, loc="lower left", bbox_to_anchor=(0, 1.01),
+    axes[0].legend(frameon=False, fontsize=10, ncol=2, loc="lower left", bbox_to_anchor=(0, 1.01),
                    handletextpad=0.3, columnspacing=0.8)
-    panel_label(axes[0], "a")
+    panel_label(axes[0], "a", x=-0.18, y=1.12)
     method_rows = {method: {int(r["k"]): r for r in k_sweep if r["method"] == method}
                    for method in ("sparse_1d_exact", "sparse_2d_exact", "dense_1d_exact", "dense_2d_exact")}
     k_values = sorted(method_rows["sparse_1d_exact"])
@@ -853,10 +868,7 @@ def fig7_efficiency_operations() -> None:
     axes[1].axhline(1, color=COLORS["reference"], lw=0.9, ls="--", label="equal")
     axes[1].set(xlabel="$k$", ylabel="T1D / T2D")
     axes[1].set_title(">1: 1D slower", fontsize=11)
-    axes[1].legend(frameon=False, fontsize=10.0, ncol=1, loc="upper left",
-                   bbox_to_anchor=(0.02, 0.98), borderaxespad=0.0,
-                   handletextpad=0.25, labelspacing=0.15)
-    panel_label(axes[1], "b")
+    panel_label(axes[1], "b", x=-0.18, y=1.05)
     fixed_methods = {method: {int(r["n_query"]): r for r in fixed if r["method"] == method} for method in ("sparse_1d_exact", "sparse_2d_exact", "dense_1d_exact", "dense_2d_exact")}
     fixed_q = sorted(fixed_methods["sparse_1d_exact"])
     method_order = ["dense_2d_exact", "dense_1d_exact", "sparse_2d_exact", "sparse_1d_exact"]
@@ -875,7 +887,7 @@ def fig7_efficiency_operations() -> None:
     axes[2].set(xlabel="query count (n=1280)", ylabel="runtime (s)")
     axes[2].set_yscale("log")
     axes[2].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
-    panel_label(axes[2], "c")
+    panel_label(axes[2], "c", x=-0.18, y=1.05)
     method_order = ["dense_2d_exact", "dense_1d_exact", "sparse_2d_exact", "sparse_1d_exact"]
     modes = ["disjoint", "block_shared", "chain", "fully_shared"]
     overlap_by_method = {method: {r["overlap_mode"]: r for r in overlap if r["method"] == method} for method in method_order}
@@ -894,24 +906,31 @@ def fig7_efficiency_operations() -> None:
     axes[3].set_xticks(positions, ["D", "B", "C", "F"], fontsize=10.0)
     axes[3].set(xlabel="overlap mode (D/B/C/F)", ylabel="time / sparse--1D")
     axes[3].set_title(">1: slower", fontsize=11)
-    axes[3].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
+    axes[3].set_yticks([0.5, 1, 2, 4], ["0.5", "1", "2", "4"])
+    axes[3].yaxis.set_minor_formatter(NullFormatter())
     axes[3].axhline(1, color=COLORS["reference"], lw=0.9, ls="--")
     axes[3].grid(axis="y", which="major", color="#dddddd", lw=0.5)
-    panel_label(axes[3], "d")
+    panel_label(axes[3], "d", x=-0.18, y=1.05)
+    for axis in axes:
+        axis.tick_params(axis="y", labelsize=11.5)
+    axes[1].tick_params(axis="x", labelsize=11.0)
+    axes[2].tick_params(axis="x", labelsize=11.0)
     method_handles, method_legend = axes[2].get_legend_handles_labels()
     fig.legend(method_handles, method_legend, frameon=False, fontsize=11, ncol=4,
                loc="lower center", bbox_to_anchor=(0.57, 0.025), handletextpad=0.3,
                columnspacing=0.8)
-    fig.subplots_adjust(left=0.13, right=0.98, bottom=0.27, top=0.88, wspace=0.54, hspace=1.10)
+    fig.subplots_adjust(left=0.13, right=0.98, bottom=0.22, top=0.88, wspace=0.46, hspace=0.72)
+    plotted_methods = {"sparse_1d_exact", "sparse_2d_exact", "dense_1d_exact", "dense_2d_exact"}
     write_panel("fig7_efficiency_operations_panels.csv", [
         *[{**r, "panel": "a", "source_row": f"e9_deterministic_{deterministic.index(r) + 2}",
-           "transformation": "absolute median and Q1--Q3 error bars"} for r in deterministic],
+           "display_label": f"{r['n_train']}/{r['n_query']}/{r['k']}",
+           "transformation": "absolute median and Q1--Q3 error bars; label is n_train/n_query/k"} for r in deterministic],
         *[{**r, "panel": "b", "source_row": f"e9_k_sweep_{k_sweep.index(r) + 2}",
-           "transformation": "T1D/T2D; >1 means 1D slower"} for r in k_sweep],
+           "transformation": "T1D/T2D; >1 means 1D slower"} for r in k_sweep if r["method"] in plotted_methods],
         *[{**r, "panel": "c", "source_row": f"e9_fixed_train_{fixed.index(r) + 2}",
-           "transformation": "absolute median and Q1--Q3 error bars"} for r in fixed],
+           "transformation": "absolute median and Q1--Q3 error bars"} for r in fixed if r["method"] in plotted_methods],
         *[{**r, "panel": "d", "source_row": f"e9_overlap_{overlap.index(r) + 2}",
-           "transformation": "time divided by sparse--1D; >1 slower than reference"} for r in overlap],
+           "transformation": "time divided by sparse--1D; >1 slower than reference"} for r in overlap if r["method"] in plotted_methods],
     ])
     save(fig, "fig7_efficiency_operations")
 

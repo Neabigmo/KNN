@@ -322,6 +322,32 @@ def factorized_joint_binary_flip_probability(
         raise ValueError("indices_q contains an invalid training index")
     if np.any(indices_r < 0) or np.any(indices_r >= len(y_train)):
         raise ValueError("indices_r contains an invalid training index")
+    if len(np.unique(indices_q)) != len(indices_q):
+        raise ValueError("indices_q must not repeat a training index")
+    if len(np.unique(indices_r)) != len(indices_r):
+        raise ValueError("indices_r must not repeat a training index")
+    if not np.array_equal(labels_q, y_train[indices_q]):
+        raise ValueError("labels_q must agree with y_train at indices_q")
+    if not np.array_equal(labels_r, y_train[indices_r]):
+        raise ValueError("labels_r must agree with y_train at indices_r")
+
+    return _factorized_joint_binary_flip_probability_local(
+        labels_q, labels_r, indices_q, indices_r, y_train, probabilities,
+        class_labels, tie_priority,
+    )
+
+
+def _factorized_joint_binary_flip_probability_local(
+    labels_q: np.ndarray,
+    labels_r: np.ndarray,
+    indices_q: np.ndarray,
+    indices_r: np.ndarray,
+    y_train: np.ndarray,
+    probabilities: np.ndarray,
+    class_labels: np.ndarray,
+    tie_priority: Iterable[object] | None,
+) -> float:
+    """Factorized edge kernel for arrays validated by the batch entry point."""
 
     q_set = set(int(index) for index in indices_q)
     r_set = set(int(index) for index in indices_r)
@@ -398,6 +424,10 @@ class BatchRiskMoments:
     second_moment: float
     variance: float
     overlap_pairs: np.ndarray
+    pair_scan_count: int = 0
+    joint_dp_count: int = 0
+    explicit_independent_product_count: int = 0
+    aggregated_nonedge_pair_count: int = 0
 
     @property
     def overlap_pair_count(self) -> int:
@@ -407,6 +437,10 @@ class BatchRiskMoments:
     def total_query_pairs(self) -> int:
         n_queries = len(self.query_probabilities)
         return n_queries * (n_queries - 1) // 2
+
+    @property
+    def total_nonedge_pair_count(self) -> int:
+        return self.total_query_pairs - self.overlap_pair_count
 
 
 def query_overlap_pairs(neighbors: np.ndarray) -> np.ndarray:
@@ -458,12 +492,18 @@ def batch_risk_moments_variant(
     y_train = np.asarray(y_train)
     neighbors = np.asarray(neighbors, dtype=int)
     probabilities = np.asarray(list(flip_probabilities), dtype=float)
+    if y_train.ndim != 1 or len(y_train) == 0:
+        raise ValueError("y_train must be a non-empty one-dimensional array")
     if neighbors.ndim != 2 or len(neighbors) == 0:
         raise ValueError("neighbors must be a non-empty two-dimensional array")
     if len(probabilities) != len(y_train):
         raise ValueError("flip_probabilities must match y_train")
+    if np.any(~np.isfinite(probabilities)) or np.any((probabilities < 0) | (probabilities > 1)):
+        raise ValueError("flip_probabilities must be finite values in [0, 1]")
     if np.any(neighbors < 0) or np.any(neighbors >= len(y_train)):
         raise ValueError("neighbors contain an invalid training index")
+    if any(len(np.unique(row)) != len(row) for row in neighbors):
+        raise ValueError("each query neighborhood must not repeat a training index")
     labels, counts = counts_from_neighbors(y_train, neighbors, classes=classes)
     if len(labels) != 2:
         raise ValueError("batch_risk_moments_variant currently supports binary labels")
@@ -493,23 +533,30 @@ def batch_risk_moments_variant(
             pairs = np.empty((0, 2), dtype=int)
 
     pair_sum = 0.0
+    pair_scan_count = 0
+    joint_dp_count = 0
+    explicit_independent_product_count = 0
+    aggregated_nonedge_pair_count = 0
     neighbor_sets = [set(int(index) for index in row) for row in neighbors]
     for left, right in pairs:
-        if factorized_joint and not (neighbor_sets[left] & neighbor_sets[right]):
-            # Dense 1D still scans this pair, but disjoint independent events
-            # have an exact marginal product and need no joint recurrence.
+        pair_scan_count += 1
+        if not (neighbor_sets[left] & neighbor_sets[right]):
+            # Both dense variants perform the same independence test. Disjoint
+            # events have an exact marginal product and need no joint DP.
             pair_sum += float(query_probabilities[left] * query_probabilities[right])
+            explicit_independent_product_count += 1
             continue
+        joint_dp_count += 1
         if factorized_joint:
-            pair_sum += factorized_joint_binary_flip_probability(
+            pair_sum += _factorized_joint_binary_flip_probability_local(
                 y_train[neighbors[left]],
                 y_train[neighbors[right]],
                 neighbors[left],
                 neighbors[right],
                 y_train,
                 probabilities,
-                classes=labels,
-                tie_priority=tie_priority,
+                labels,
+                tie_priority,
             )
         else:
             pair_sum += _joint_binary_flip_probability(
@@ -534,6 +581,7 @@ def batch_risk_moments_variant(
             sum(query_probabilities[left] * query_probabilities[right] for left, right in overlap_pairs)
         )
         pair_sum = total_pair_product - overlap_product + pair_sum
+        aggregated_nonedge_pair_count = n_queries * (n_queries - 1) // 2 - len(overlap_pairs)
 
     second_numerator = float(np.sum(query_probabilities)) + 2.0 * pair_sum
     second_moment = float(second_numerator / (n_queries * n_queries))
@@ -544,6 +592,10 @@ def batch_risk_moments_variant(
         second_moment,
         variance,
         overlap_pairs,
+        pair_scan_count,
+        joint_dp_count,
+        explicit_independent_product_count,
+        aggregated_nonedge_pair_count,
     )
 
 

@@ -36,6 +36,18 @@ def test_binary_odd_k_pivotal_identity():
     assert result.decisive_influence.sum() == 2 * 3
 
 
+def test_binary_pivotal_identity_requires_admissible_opposite_label():
+    y_train = np.array([0, 0, 1])
+    neighbors = np.array([[0, 1, 2]])
+    unrestricted = compute_influence(y_train, neighbors, classes=[0, 1])
+    restricted = compute_influence(
+        y_train, neighbors, classes=[0, 1], allowed_labels={0: [], 1: [0]}
+    )
+    assert unrestricted.exact_vulnerable.tolist() == [True]
+    assert restricted.exact_vulnerable.tolist() == [False]
+    assert restricted.decisive_influence.sum() == 0
+
+
 def test_point_global_bound_uses_training_prototype_count():
     # Six disjoint 1-NN queries make every query vulnerable, while each
     # prototype can change only its own query.
