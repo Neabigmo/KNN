@@ -9,7 +9,7 @@ The central analysis distinguishes deleted-point leave-one-out recovery error fr
 - `src/knn_reliability/`: deterministic kNN, influence, geometry, probability, and audit utilities.
 - `scripts/acquire_data.py`: dataset acquisition and synthetic-data generation with a reproducible manifest.
 - `experiments/run_revision_experiments.py`: E0--E9 experiment runner used by the revision protocol.
-- `figures/scripts/build_revision_figures.py`: figure-generation script driven by experiment outputs; the released figures use controlled influence/variance panels, class-by-$k$ frequency summaries, within-dataset medians with exact Q25--Q75 intervals, geometry-operation heatmaps, and common-direction runtime ratios.
+- `figures/scripts/build_revision_figures.py`: figure-generation script driven by experiment outputs; the released figures use controlled influence/variance panels, class-by-$k$ frequency summaries, within-dataset medians with exact Q25--Q75 intervals, geometry-operation heatmaps, and common-direction runtime ratios. Main-panel provenance tables are written alongside the figures, with supplementary validation rows kept separate.
 - `tests/`: 26 regression and exactness tests for the kNN, influence, geometry, and probability implementations.
 - `theory/`: theorem proofs, complexity notes, novelty matrix, and theory verification record.
 
@@ -37,7 +37,7 @@ The experiment runner writes audit tables and run metadata under `results/`.  Th
 
 E0 reports both the same-split implementation audit and the historical comparison status.  To reproduce the historical join, set `KNN_BASELINE_TABLE_DIR` to a directory containing `paa_multiclass_benchmark.csv` before running E0.  The runner records the resulting status in `results/processed/e0_reproduction_status.json` and writes an explicit missing-key audit.  E3 includes exact finite-noise checks at five flip probabilities, a controlled same-$k$ concentration pair, and the factorized overlap calculation; E5 includes randomized ordering within exact score ties; E6 includes the controlled enter/stay/exit audit and a 70-row four-state random-angle displacement curve with two same-label candidate controls on the same prototype.  E9 compares dense--2D, sparse--2D, dense--1D, and sparse--1D exact probability paths on identical inputs and includes a fixed-query, fixed-overlap-edge-fraction sweep over $k=3,5,7,11,15,31$.
 
-The public release corresponds to the manuscript revision tag `paa-revision-2026-10-10-v11`.  The E6 release separates neighborhood membership exchange from within-neighborhood order changes and retains both rates in the audit output.  The experiment runner and figure builder use portable relative paths and acquire benchmark data through the documented acquisition script.
+The public release corresponds to the manuscript revision tag `paa-revision-2026-10-10-v12`.  The E6 release separates neighborhood membership exchange from within-neighborhood order changes and retains both rates in the audit output.  The figure release separates plotted rows from E4 and real-data validation supplements, summarizes constant geometry controls explicitly, and uses the final-size figure layouts referenced by the manuscript.  The experiment runner and figure builder use portable relative paths and acquire benchmark data through the documented acquisition script.
 
 The test suite includes a complete small-state check for the first-order
 batch-variance expansion and randomized equivalence checks for the factorized
