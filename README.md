@@ -10,7 +10,7 @@ This repository provides the reproducibility code for directional training-label
 - `figures/scripts/build_revision_figures.py`: figure-generation script driven by experiment outputs; the released figures use controlled influence/variance panels, class-by-$k$ frequency summaries, within-dataset medians with exact Q25--Q75 intervals, geometry-operation heatmaps, and common-direction runtime ratios. Main-panel provenance tables are written alongside the figures, with supplementary validation rows kept separate.
 - `analyses/`: the E3 batch-dependence audit and exact finite-state counterexamples used by the reframed revision.
 - `tests/`: 30 regression, exactness, and input-contract tests for the kNN, influence, geometry, and probability implementations.
-- `theory/`: theorem proofs, complexity notes, novelty matrix, and theory verification record.
+- `theory/`: theorem proofs, including the finite graph-metric LOO blind-spot construction for every `k >= 1`, complexity notes, novelty matrix, and theory verification record.
 
 ## Data sources
 
@@ -39,6 +39,8 @@ E0 reports both the same-split implementation audit and the historical compariso
 Release `paa-revision-2026-10-10-v13` contains the code used for the current revision. The E6 implementation separates neighborhood membership exchange from within-neighborhood order changes, and E9 reports explicit pair scans, overlap-edge joint evaluations, and nonedge contributions aggregated without pairwise iteration. The experiment runner and figure builder use portable relative paths and acquire benchmark data through the documented acquisition script. The associated submission archive supplies frozen result tables, figure panels, and manuscript source.
 
 Release `paa-revision-2026-10-10-v14-reframed` adds the two analysis programs used for the revised probability argument. `analyses/dependence_gap_audit.py` recomputes the existing E3 exact variances and compares them with the query-independent reference; `analyses/theory_counterexamples.py` enumerates the finite-state witnesses for identical single-edit rows and negative covariance. Both programs consume the documented acquisition and processing interfaces and write derived audit tables under `results/derived/`.
+
+Release `paa-revision-2026-10-10-v15-all-k-reframed` synchronizes the public theory notes with the submission package. It records the finite shortest-path construction showing, for every `k >= 1`, that all training-point LOO predictions can be correct while one fixed-position prototype relabeling changes a separate query. The Euclidean ring/support construction remains a secondary `k >= 2` illustration.
 
 The test suite includes a complete small-state check for the first-order
 batch-variance expansion and randomized equivalence checks for the factorized

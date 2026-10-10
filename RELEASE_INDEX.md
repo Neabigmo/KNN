@@ -17,3 +17,11 @@ This tag adds the E3 dependence-gap audit and the exact finite-state
 counterexample enumeration used by the reframed manuscript. It also records
 the corrected runtime interpretation: the factorized implementation does not
 show a consistent advantage across the tested configurations.
+
+## `paa-revision-2026-10-10-v15-all-k-reframed`
+
+This tag synchronizes the public theory notes with the submission package. It
+records the finite graph-metric construction for every `k >= 1`, in which all
+training-point LOO predictions are correct while a fixed-position prototype
+relabeling changes a separate query. The E3 analysis programs and frozen
+implementation from v14 are unchanged.

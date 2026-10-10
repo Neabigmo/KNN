@@ -21,6 +21,35 @@ point vulnerability permits a different direction at each query, whereas a
 global influence score fixes one prototype and one target class for the whole
 query batch.
 
+## Theorem 0: finite LOO blind spot for every k
+
+Fix index-based neighbor ordering and class priority `0 < 1`.  For every
+integer `k >= 1`, form a finite weighted graph with query vertex `x`,
+representatives `z_1,...,z_k`, and private supports `s_{i,1},...,s_{i,k}`.
+The edges are `x--z_i` of weight `1` and `z_i--s_{i,t}` of weight
+`epsilon`, where `0 < epsilon < 1/2`; use the shortest-path metric.  The
+training sample contains the representatives and supports, but not `x`.
+Assign label `0` to `ceil(k/2)` representatives and label `1` to the rest,
+and give each support its representative's label.
+
+Deleting a representative leaves its `k` private supports as the nearest
+same-label occurrences.  Deleting one support leaves its representative and
+the other `k-1` supports in the same cluster as the nearest `k` occurrences.
+The graph distances separate each cluster from every other cluster, so every
+training-point LOO prediction is correct.  At `x`, the representatives are
+the first `k` neighbors because they are at distance `1` and the supports are
+at distance `1+epsilon`.  The initial prediction is `0`, by strict majority
+for odd `k` and by the fixed priority rule for even `k`.  Relabeling one
+label-`0` representative to `1` changes the representative vote to a strict
+label-`1` majority.  Thus a fixed-position relabeling changes the prediction at
+`x` for every `k >= 1`.
+
+This theorem is the main finite separation result.  It is stronger than a
+statement that LOO loss is unchanged: every deleted training occurrence is
+correctly recovered.  The two-dimensional ring/support construction below is
+an additional Euclidean realization for `k >= 2`, not the source of the
+all-`k` claim.
+
 ## Proposition 1: exact multiclass one-label test
 
 Assume a query has current winner `a`, with count `v_a`, and a prototype in

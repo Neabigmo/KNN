@@ -20,6 +20,12 @@ Date: 2026-10-09
   than treated as independent-model validation.
 - The ring construction is checked for explicit cross-cluster and
   center-neighborhood distance inequalities at `k=3`.
+- The finite graph-metric LOO blind-spot theorem is proved for every `k >= 1`:
+  each training occurrence has `k` same-label neighbors after its deletion,
+  while the separate query sees the `k` representatives and flips after one
+  fixed-position relabeling.  The construction is recorded in the main text
+  and checked symbolically by the proof inequalities; the Euclidean ring is a
+  secondary `k >= 2` illustration.
 - The single-prototype motion certificate is checked in 40,000 random
   move-and-relabel trials and on small perturbations of three benchmark
   datasets; no eligible case violates the strict-gap condition.
