@@ -1313,6 +1313,9 @@ def run_e6() -> None:
                 "fixed_label_prediction": fixed_label_prediction[0],
                 "combined_prediction": combined_prediction[0],
                 "neighbor_exchange": bool(
+                    set(combined_base_cache.indices[0]) != set(moved_cache.indices[0])
+                ),
+                "neighbor_order_change": bool(
                     not np.array_equal(combined_base_cache.indices[0], moved_cache.indices[0])
                 ),
                 "fixed_label_prediction_changed": bool(fixed_label_prediction[0] != combined_base[0]),
@@ -1380,6 +1383,7 @@ def run_e6() -> None:
             geometry_changed = 0
             combined_changed = 0
             exchanges = 0
+            order_changes = 0
             target_inside = 0
             label_effect = 0
             inside_trials = 0
@@ -1405,7 +1409,8 @@ def run_e6() -> None:
                 geometry_change = int(geometry_prediction[0] != base_prediction[0])
                 combined_change = int(combined_prediction[0] != base_prediction[0])
                 is_inside = boundary.target_index in moved_cache.indices[0]
-                exchanges += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
+                exchanges += int(set(base_cache.indices[0]) != set(moved_cache.indices[0]))
+                order_changes += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
                 target_inside += int(is_inside)
                 geometry_changed += geometry_change
                 combined_changed += combined_change
@@ -1431,6 +1436,7 @@ def run_e6() -> None:
                     "motion_sign": parameters["motion_sign"],
                     "trials": trials,
                     "neighbor_exchange_rate": exchanges / trials,
+                    "neighbor_order_change_rate": order_changes / trials,
                     "target_in_neighbor_rate": target_inside / trials,
                     "fixed_label_prediction_changed": bool(fixed_changed),
                     "geometry_prediction_changed_rate": geometry_changed / trials,
@@ -1491,6 +1497,7 @@ def run_e6() -> None:
                 candidate_entry = 0
                 candidate_one_hits = 0
                 exchanges = 0
+                order_changes = 0
                 label_only_changed = 0
                 geometry_changed = 0
                 combined_changed = 0
@@ -1513,7 +1520,8 @@ def run_e6() -> None:
                     target_inside += int(target_is_inside)
                     candidate_entry += int(candidate_is_present)
                     candidate_one_hits += int(6 in neighbor_set)
-                    exchanges += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
+                    exchanges += int(set(base_cache.indices[0]) != set(moved_cache.indices[0]))
+                    order_changes += int(not np.array_equal(base_cache.indices[0], moved_cache.indices[0]))
                     label_only_changed += int(fixed_label_prediction[0] != base_prediction[0])
                     geometry_changed += int(geometry_prediction[0] != base_prediction[0])
                     combined_changed += int(combined_prediction[0] != base_prediction[0])
@@ -1550,6 +1558,7 @@ def run_e6() -> None:
                         "target_in_neighbor_rate": target_rate,
                         "analytic_candidate_entry_rate": 1.0 - target_rate,
                         "neighbor_exchange_rate": exchanges / trials,
+                        "neighbor_order_change_rate": order_changes / trials,
                         "label_only_prediction_changed_rate": label_only_changed / trials,
                         "geometry_prediction_changed_rate": geometry_changed / trials,
                         "analytic_geometry_prediction_changed_rate": analytic_geometry_changed / trials,
